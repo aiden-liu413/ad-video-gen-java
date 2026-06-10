@@ -1,0 +1,49 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ad-video-gen-java
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+  datasource:
+    url: jdbc:h2:file:./data/ad-video-gen;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+ad-video:
+  llm:
+    base-url: https://ark.cn-beijing.volces.com/api/v3
+    api-key: ${ARK_API_KEY:}
+    # Doubao-Seed-1.6: 理解用户输入并转化为 Agent/工具调用
+    model: ${LLM_MODEL:doubao-seed-1-6-250615}
+    endpoint-id: ${LLM_ENDPOINT_ID:}
+  image:
+    base-url: https://ark.cn-beijing.volces.com/api/v3
+    api-key: ${ARK_API_KEY:}
+    # Doubao-Seedream 4.5 pro: 文生图 / 参考图生图
+    model: ${IMAGE_MODEL:doubao-seedream-4-5-pro}
+    endpoint-id: ${CGT_ENDPOINT_ID:}
+    enabled: ${IMAGE_GENERATION_ENABLED:false}
+  video:
+    base-url: https://ark.cn-beijing.volces.com/api/v3
+    api-key: ${ARK_API_KEY:}
+    # Doubao-Seedance 1.0 pro: 图文生视频
+    model: ${VIDEO_MODEL:doubao-seedance-1-0-pro}
+    endpoint-id: ${T2V_ENDPOINT_ID:}
+    enabled: ${VIDEO_GENERATION_ENABLED:false}
+  short-link:
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+  upload:
+    storage-dir: ${UPLOAD_STORAGE_DIR:./data/uploads}
