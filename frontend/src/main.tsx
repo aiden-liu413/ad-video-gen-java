@@ -684,6 +684,7 @@ function WorkflowView(props: WorkflowViewProps) {
       </section>
       <StageStepper current={task.stage} viewing={viewStage} status={task.status} task={task} onSelect={setViewStage} />
       {props.message && <div className="message">{props.message}</div>}
+      {hasTaskError(task) && <ErrorPanel task={task} />}
       {readOnly && <div className="message">当前正在查看历史节点内容，编辑和保存操作只在当前流程节点开放。</div>}
       <section className="stage-canvas">
         <StageContent {...props} viewStage={viewStage} readOnly={readOnly} />
@@ -699,6 +700,29 @@ function WorkflowView(props: WorkflowViewProps) {
         </div>
       </footer>
     </div>
+  );
+}
+
+function ErrorPanel({ task }: { task: TaskDetail }) {
+  const errorText = [
+    `任务 ID: ${task.taskId}`,
+    `失败节点: ${stageText(task.stage)}`,
+    task.errorCode ? `错误码: ${task.errorCode}` : "",
+    `错误信息: ${task.errorMessage ?? "未知错误"}`
+  ].filter(Boolean).join("\n");
+
+  return (
+    <section className="error-panel">
+      <div>
+        <strong>后端异常</strong>
+        <span>{task.errorCode || "WORKFLOW_FAILED"}</span>
+      </div>
+      <p>{task.errorMessage || "任务执行失败，请查看服务端日志获取更多信息。"}</p>
+      <button type="button" onClick={() => navigator.clipboard.writeText(errorText)}>
+        <Copy size={16} />
+        复制错误
+      </button>
+    </section>
   );
 }
 
@@ -1142,6 +1166,7 @@ function statusText(value: string) {
 }
 
 function stageText(value: TaskStage) {
+  if (value === "FAILED") return "失败";
   const found = stages.find((item) => item.stage === canonicalStage(value));
   return found?.label ?? value;
 }
@@ -1166,6 +1191,10 @@ function hasScoredImages(task: TaskDetail) {
 
 function hasScoredVideos(task: TaskDetail) {
   return (task.scoredVideoGroups ?? []).length > 0;
+}
+
+function hasTaskError(task: TaskDetail) {
+  return task.status === "FAILED" || Boolean(task.errorCode || task.errorMessage);
 }
 
 function finalTitle(task: TaskDetail) {

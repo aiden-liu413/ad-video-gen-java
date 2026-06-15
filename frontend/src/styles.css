@@ -224,6 +224,56 @@ pre {
   font-size: 13px;
 }
 
+.error-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #f2a7a1;
+  border-left: 4px solid #d8483f;
+  border-radius: 8px;
+  background: #fff6f5;
+  color: #7d241f;
+}
+
+.error-panel div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.error-panel strong {
+  font-size: 15px;
+}
+
+.error-panel span {
+  max-width: 46%;
+  overflow-wrap: anywhere;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #ffe5e2;
+  color: #9e2f28;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.error-panel p {
+  margin: 0;
+  max-height: 150px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.error-panel button {
+  justify-self: start;
+  border-color: #e6938c;
+  background: #fff;
+  color: #8d2c26;
+}
+
 .create-layout {
   max-width: 1320px;
   margin: 0 auto;
