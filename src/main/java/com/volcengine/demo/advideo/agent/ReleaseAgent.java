@@ -24,18 +24,11 @@ public class ReleaseAgent {
         this.promptService = promptService;
     }
 
-    public ReleasePlan createReleasePlan(GenerateRequest request, MultimediaResult multimedia) {
-        return createReleasePlan(request, multimedia, null);
-    }
-
     public ReleasePlan createReleasePlan(GenerateRequest request, MultimediaResult multimedia, String platform) {
         String productName = request.productName() == null || request.productName().isBlank() ? "广告商品" : request.productName();
         String targetPlatform = StringUtils.hasText(platform) ? platform : "通用短视频平台";
         String releaseAdvice = releaseAdvice(targetPlatform);
-        String landingUrl = request.landingPageUrl() == null || request.landingPageUrl().isBlank()
-                ? multimedia.videoUrl()
-                : request.landingPageUrl();
-        String shortLink = shortLinkService.createShortLink(landingUrl);
+        String shortLink = shortLinkService.createShortLink(multimedia.videoUrl());
         String copy = chatClient.complete(
                 promptService.releaseAgent(),
                 """

@@ -29,11 +29,7 @@ public class SeedanceVideoClient {
         this.restClient = restClientBuilder.baseUrl(properties.video().baseUrl()).build();
     }
 
-    public VideoGeneration generateVideo(String productName, List<String> imageUrls, String script) {
-        return generateVideo(productName, imageUrls, script, 5);
-    }
-
-    public VideoGeneration generateVideo(String productName, List<String> imageUrls, String script, int durationSeconds) {
+    public VideoGeneration generateVideo(String productName, List<String> imageUrls, String script, int durationSeconds, String ratio) {
         if (!properties.video().enabled() || !StringUtils.hasText(properties.video().apiKey())) {
             String taskId = UUID.randomUUID().toString();
             String videoUrl = properties.shortLink().publicBaseUrl() + "/mock/seedance/videos/" + taskId + ".mp4";
@@ -44,14 +40,14 @@ public class SeedanceVideoClient {
         Map<String, Object> payload = Map.of(
                 "model", modelName(),
                 "content", buildContentForSwz(script, imageUrls),
-                "ratio", "adaptive",
+                "ratio", ratioValue(ratio),
                 "duration", durationSeconds,
                 "watermark", false,
                 "task_type","i2v",
                 "metadata", Map.of("productName", productName)
         );
-        log.info("Seedance video generation start, model={}, productName={}, imageCount={}, duration={}, scriptChars={}",
-                modelName(), productName, imageUrls.size(), durationSeconds, script == null ? 0 : script.length());
+        log.info("Seedance video generation start, model={}, productName={}, imageCount={}, duration={}, ratio={}, scriptChars={}",
+                modelName(), productName, imageUrls.size(), durationSeconds, ratioValue(ratio), script == null ? 0 : script.length());
         VideoTaskResponse response;
         try {
             response = restClient.post()
@@ -126,22 +122,6 @@ public class SeedanceVideoClient {
         }
     }
 
-    private List<Map<String, Object>> buildContent(String script, List<String> imageUrls) {
-        List<Map<String, Object>> content = new ArrayList<>();
-        content.add(Map.of("type", "text", "text", script == null ? "" : script));
-        for (String imageUrl : imageUrls) {
-            if (StringUtils.hasText(imageUrl)) {
-                content.add(Map.of(
-                        "type", "image_url",
-                        "image_url", Map.of("url", imageUrl),
-                        "role", "reference_image"
-                ));
-            }
-        }
-        log.info("Seedance request content built, textCount=1, imageUrlCount={}", content.size() - 1);
-        return content;
-    }
-
     private List<Map<String, Object>> buildContentForSwz(String script, List<String> imageUrls) {
         List<Map<String, Object>> content = new ArrayList<>();
         content.add(Map.of("type", "text", "text", script == null ? "" : script));
@@ -175,6 +155,10 @@ public class SeedanceVideoClient {
         return StringUtils.hasText(properties.video().endpointId())
                 ? properties.video().endpointId()
                 : properties.video().model();
+    }
+
+    private String ratioValue(String ratio) {
+        return StringUtils.hasText(ratio) ? ratio : "adaptive";
     }
 
     public record VideoGeneration(String taskId, String videoUrl) {

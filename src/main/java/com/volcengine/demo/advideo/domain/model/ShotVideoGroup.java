@@ -4,6 +4,7 @@ import java.util.List;
 
 public record ShotVideoGroup(
         String shotId,
+        Integer duration,
         String prompt,
         String action,
         String words,

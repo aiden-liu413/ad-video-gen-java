@@ -362,7 +362,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 config.videoAdvice()
         );
         DirectorPlan plan = directorAgent.createPlan(toGenerateRequest(request), insight, config.platform());
-        return plan.scenes().stream()
+        List<Shot> shots = plan.scenes().stream()
                 .map(scene -> new Shot(
                         "shot_%03d".formatted(scene.index()),
                         scene.index(),
@@ -375,6 +375,64 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         "product_showcase"
                 ))
                 .toList();
+        return normalizeShotDurations(shots, config.duration());
+    }
+
+    private List<Shot> normalizeShotDurations(List<Shot> shots, Integer totalDuration) {
+        if (isEmpty(shots)) {
+            return List.of();
+        }
+        int expectedTotal = positiveOrDefault(totalDuration, shots.size() * 5);
+        List<Integer> sourceDurations = shots.stream()
+                .map(shot -> positiveOrDefault(shot.duration(), 5))
+                .toList();
+        int sourceTotal = sourceDurations.stream().mapToInt(Integer::intValue).sum();
+        List<Integer> normalized = new ArrayList<>();
+        int assigned = 0;
+        for (int index = 0; index < shots.size(); index++) {
+            double exact = sourceDurations.get(index) * (double) expectedTotal / sourceTotal;
+            int seconds = expectedTotal >= shots.size()
+                    ? Math.max(1, (int) Math.floor(exact))
+                    : (index < expectedTotal ? 1 : 0);
+            normalized.add(seconds);
+            assigned += seconds;
+        }
+        int delta = expectedTotal - assigned;
+        int cursor = 0;
+        while (delta != 0 && !normalized.isEmpty()) {
+            int index = cursor % normalized.size();
+            int current = normalized.get(index);
+            if (delta > 0) {
+                normalized.set(index, current + 1);
+                delta -= 1;
+            } else if (current > 1) {
+                normalized.set(index, current - 1);
+                delta += 1;
+            }
+            cursor += 1;
+            if (cursor > normalized.size() * Math.max(1, expectedTotal + assigned)) {
+                break;
+            }
+        }
+        int finalTotal = normalized.stream().mapToInt(Integer::intValue).sum();
+        log.info("Normalize shot durations, shotCount={}, expectedTotal={}, sourceTotal={}, finalTotal={}",
+                shots.size(), expectedTotal, sourceTotal, finalTotal);
+        List<Shot> result = new ArrayList<>();
+        for (int index = 0; index < shots.size(); index++) {
+            Shot shot = shots.get(index);
+            result.add(new Shot(
+                    shot.shotId(),
+                    shot.orderNo(),
+                    normalized.get(index),
+                    shot.prompt(),
+                    shot.action(),
+                    shot.words(),
+                    shot.reference(),
+                    shot.camera(),
+                    shot.sceneType()
+            ));
+        }
+        return result;
     }
 
     private List<ShotImageGroup> generateImages(CreateVideoTaskRequest request, VideoConfig config, List<Shot> shots) {
@@ -403,7 +461,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 ));
                 cursor += 1;
             }
-            groups.add(new ShotImageGroup(shot.shotId(), shot.prompt(), shot.action(), shot.words(), shot.reference(), images));
+            groups.add(new ShotImageGroup(shot.shotId(), shot.duration(), shot.prompt(), shot.action(), shot.words(), shot.reference(), images));
         }
         return groups;
     }
@@ -433,6 +491,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     private ShotImageGroup scoreImageGroup(ShotImageGroup group) {
         return new ShotImageGroup(
                 group.shotId(),
+                group.duration(),
                 group.prompt(),
                 group.action(),
                 group.words(),
@@ -473,7 +532,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                             .max(Comparator.comparing(image -> valueOrZero(image.score())))
                             .orElseThrow();
                     ImageCandidate selected = new ImageCandidate(best.assetId(), best.shotId(), best.id(), best.url(), best.score(), best.reason(), true);
-                    return new SelectedImage(group.shotId(), selected, group.prompt(), group.action(), group.words());
+                    return new SelectedImage(group.shotId(), group.duration(), selected, group.prompt(), group.action(), group.words());
                 })
                 .toList();
     }
@@ -488,7 +547,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                                     .max(Comparator.comparing(image -> valueOrZero(image.score())))
                                     .orElseThrow());
                     ImageCandidate selected = new ImageCandidate(chosen.assetId(), chosen.shotId(), chosen.id(), chosen.url(), chosen.score(), chosen.reason(), true);
-                    return new SelectedImage(group.shotId(), selected, group.prompt(), group.action(), group.words());
+                    return new SelectedImage(group.shotId(), group.duration(), selected, group.prompt(), group.action(), group.words());
                 })
                 .toList();
     }
@@ -506,6 +565,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 .toList());
         return new ShotVideoGroup(
                 selectedImage.shotId(),
+                selectedImage.duration(),
                 selectedImage.prompt(),
                 selectedImage.action(),
                 selectedImage.words(),
@@ -515,15 +575,18 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     }
 
     private VideoCandidate generateVideoCandidate(VideoConfig config, SelectedImage selectedImage, int index) {
+        int durationSeconds = positiveOrDefault(selectedImage.duration(), config.duration());
         String prompt = selectedImage.prompt()
                 + "\n动作：" + selectedImage.action()
                 + "\n口播：" + selectedImage.words()
+                + "\n时长：" + durationSeconds + "秒"
                 + "\n无水印，比例" + config.aspectRatio();
         SeedanceVideoClient.VideoGeneration generation = videoClient.generateVideo(
                 config.productInfo().name(),
                 List.of(selectedImage.image().url()),
                 prompt,
-                Math.max(1, selectedImage.image().id() == null ? 5 : 5)
+                durationSeconds,
+                config.aspectRatio()
         );
         return new VideoCandidate(
                 assetId("vid", selectedImage.shotId(), index),
@@ -546,6 +609,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     private ShotVideoGroup scoreVideoGroup(ShotVideoGroup group) {
         return new ShotVideoGroup(
                 group.shotId(),
+                group.duration(),
                 group.prompt(),
                 group.action(),
                 group.words(),
@@ -658,7 +722,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                             .max(Comparator.comparing(video -> valueOrZero(video.score())))
                             .orElseThrow();
                     VideoCandidate selected = new VideoCandidate(best.assetId(), best.shotId(), best.id(), best.url(), best.score(), best.reason(), true);
-                    return new SelectedVideo(group.shotId(), selected, group.words(), group.action());
+                    return new SelectedVideo(group.shotId(), group.duration(), selected, group.words(), group.action());
                 })
                 .toList();
     }
@@ -673,7 +737,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                                     .max(Comparator.comparing(video -> valueOrZero(video.score())))
                                     .orElseThrow());
                     VideoCandidate selected = new VideoCandidate(chosen.assetId(), chosen.shotId(), chosen.id(), chosen.url(), chosen.score(), chosen.reason(), true);
-                    return new SelectedVideo(group.shotId(), selected, group.words(), group.action());
+                    return new SelectedVideo(group.shotId(), group.duration(), selected, group.words(), group.action());
                 })
                 .toList();
     }
@@ -806,7 +870,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         .filter(group -> group.shotId().equals(selection.shotId()))
                         .flatMap(group -> group.images().stream()
                                 .filter(image -> image.assetId().equals(selection.assetId()))
-                                .map(image -> new SelectedImage(group.shotId(), image, group.prompt(), group.action(), group.words()))))
+                                .map(image -> new SelectedImage(group.shotId(), group.duration(), image, group.prompt(), group.action(), group.words()))))
                 .toList();
     }
 
@@ -816,7 +880,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         .filter(group -> group.shotId().equals(selection.shotId()))
                         .flatMap(group -> group.videos().stream()
                                 .filter(video -> video.assetId().equals(selection.assetId()))
-                                .map(video -> new SelectedVideo(group.shotId(), video, group.words(), group.action()))))
+                                .map(video -> new SelectedVideo(group.shotId(), group.duration(), video, group.words(), group.action()))))
                 .toList();
     }
 
@@ -893,7 +957,6 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         return new CreateVideoTaskRequest(
                 task.getInputType(),
                 task.getInputText(),
-                null,
                 List.of(),
                 task.getVideoType(),
                 task.getPlatform(),
@@ -906,23 +969,16 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     }
 
     private GenerateRequest toGenerateRequest(CreateVideoTaskRequest request) {
-        String inputType = valueOrDefault(request.inputType(), "text");
-        String prompt = valueOrDefault(request.text(), defaultPrompt(inputType));
-        String productUrl = "product_url".equalsIgnoreCase(inputType) ? trimToNull(request.productUrl()) : null;
-        List<String> referenceImageUrls = "product_image".equalsIgnoreCase(inputType)
-                ? safeImageUrls(request.imageUrls())
-                : List.of();
+        String prompt = valueOrDefault(request.text(), defaultPrompt());
         return new GenerateRequest(
                 prompt,
                 null,
                 prompt,
-                productUrl,
                 null,
                 null,
                 request.style(),
                 String.valueOf(request.durationValue()),
-                productUrl,
-                referenceImageUrls
+                safeImageUrls(request.imageUrls())
         );
     }
 
@@ -935,18 +991,8 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 .toList();
     }
 
-    private String defaultPrompt(String inputType) {
-        if ("product_url".equalsIgnoreCase(inputType)) {
-            return "参考商品链接，生成一条带货广告视频。";
-        }
-        if ("product_image".equalsIgnoreCase(inputType)) {
-            return "参考上传的商品图片，生成一条带货广告视频。";
-        }
-        return "根据用户描述生成一条带货广告视频。";
-    }
-
-    private String trimToNull(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
+    private String defaultPrompt() {
+        return "参考上传的商品图片，生成一条带货广告视频。";
     }
 
     private String toJson(Object value) {
@@ -963,6 +1009,10 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
 
     private BigDecimal valueOrZero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private int positiveOrDefault(Integer value, int fallback) {
+        return value == null || value <= 0 ? fallback : value;
     }
 
     private String assetId(String prefix, String shotId, int index) {

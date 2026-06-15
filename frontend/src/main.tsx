@@ -86,6 +86,7 @@ type VideoCandidate = {
 
 type ShotImageGroup = {
   shotId: string;
+  duration?: number;
   prompt: string;
   action: string;
   words: string;
@@ -95,6 +96,7 @@ type ShotImageGroup = {
 
 type ShotVideoGroup = {
   shotId: string;
+  duration?: number;
   prompt: string;
   action: string;
   words: string;
@@ -104,6 +106,7 @@ type ShotVideoGroup = {
 
 type SelectedImage = {
   shotId: string;
+  duration?: number;
   image: ImageCandidate;
   prompt: string;
   action: string;
@@ -112,6 +115,7 @@ type SelectedImage = {
 
 type SelectedVideo = {
   shotId: string;
+  duration?: number;
   video: VideoCandidate;
   words: string;
   action: string;
@@ -238,6 +242,19 @@ const initialForm: FormState = {
   generateVideoCount: "2"
 };
 
+const aspectRatioOptions = [
+  { value: "adaptive", label: "自适应" },
+  { value: "21:9", label: "21:9" },
+  { value: "16:9", label: "16:9" },
+  { value: "4:3", label: "4:3" },
+  { value: "1:1", label: "1:1" },
+  { value: "3:4", label: "3:4" },
+  { value: "9:16", label: "9:16" },
+  { value: "9:21", label: "9:21" }
+];
+
+const durationOptions = ["5", "10", "15", "30"];
+
 const stages: Array<{ stage: TaskStage; label: string; icon: React.ReactNode }> = [
   { stage: "CREATED", label: "创建", icon: <Check size={16} /> },
   { stage: "MARKET_PLANNING", label: "营销策划", icon: <Sparkles size={16} /> },
@@ -324,7 +341,6 @@ function App() {
         body: JSON.stringify({
           inputType: "product_image",
           text: form.text,
-          productUrl: null,
           imageUrls,
           videoType: form.videoType,
           platform: form.platform,
@@ -626,18 +642,21 @@ function CreateTaskView({
         <div className="metric-row">
           <label>
             时长
-            <select value={form.duration} onChange={(event) => setFormValue("duration", event.target.value, setForm)}>
-              <option value="6">6秒</option>
-              <option value="15">15秒</option>
-              <option value="30">30秒</option>
-            </select>
+            <div className="preset-row">
+              {durationOptions.map((duration) => (
+                <button type="button" key={duration} className={form.duration === duration ? "active" : ""} onClick={() => setFormValue("duration", duration, setForm)}>
+                  {duration}秒
+                </button>
+              ))}
+            </div>
+            <input type="number" min={1} max={120} value={form.duration} onChange={(event) => setFormValue("duration", event.target.value, setForm)} />
           </label>
           <label>
             比例
             <select value={form.aspectRatio} onChange={(event) => setFormValue("aspectRatio", event.target.value, setForm)}>
-              <option>9:16</option>
-              <option>1:1</option>
-              <option>16:9</option>
+              {aspectRatioOptions.map((ratio) => (
+                <option key={ratio.value} value={ratio.value}>{ratio.label}</option>
+              ))}
             </select>
           </label>
         </div>
@@ -958,7 +977,7 @@ function MediaGrid({
             {type === "video" && isRenderableVideo(asset.url) ? <video src={asset.url} controls /> : null}
             {type === "image" && !isRenderableImage(asset.url) && <div className="mock-media">{asset.url}</div>}
             {type === "video" && !isRenderableVideo(asset.url) && <div className="mock-media">{asset.url}</div>}
-            <span>{group.shotId} · {asset.score ?? "-"} 分</span>
+            <span>{group.shotId} · {group.duration ?? "-"}秒 · {asset.score ?? "-"} 分</span>
             <small>{asset.reason}</small>
             {selected[group.shotId] === asset.assetId && (
               <>

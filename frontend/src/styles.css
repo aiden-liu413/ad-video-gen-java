@@ -215,6 +215,24 @@ pre {
   color: #0b758a;
 }
 
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.preset-row button {
+  min-width: 0;
+  padding: 0 8px;
+  font-weight: 750;
+}
+
+.preset-row button.active {
+  border-color: #25bed1;
+  background: #e8fbfe;
+  color: #07869b;
+}
+
 .message {
   padding: 12px 14px;
   border: 1px solid #b8e2ec;

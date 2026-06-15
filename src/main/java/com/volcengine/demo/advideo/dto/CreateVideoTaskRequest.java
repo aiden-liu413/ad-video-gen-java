@@ -7,7 +7,6 @@ import java.util.List;
 public record CreateVideoTaskRequest(
         @NotBlank String inputType,
         String text,
-        String productUrl,
         List<String> imageUrls,
         String videoType,
         String platform,

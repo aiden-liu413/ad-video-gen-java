@@ -66,6 +66,11 @@ class VideoTaskWorkflowFunctionalTests {
 
         JsonNode shots = advanceAndWait(taskId, "SHOT_SCRIPT_GENERATING");
         assertThat(shots.path("data").path("shots")).hasSizeGreaterThanOrEqualTo(1);
+        int totalShotDuration = 0;
+        for (JsonNode shot : shots.path("data").path("shots")) {
+            totalShotDuration += shot.path("duration").asInt();
+        }
+        assertThat(totalShotDuration).isEqualTo(15);
         mockMvc.perform(post("/api/video-tasks/{taskId}/context", taskId)
                         .contentType("application/json")
                         .content("""
@@ -90,6 +95,8 @@ class VideoTaskWorkflowFunctionalTests {
         JsonNode videos = advanceAndWait(taskId, "VIDEO_GENERATING");
         assertThat(videos.path("data").path("videoGroups")).hasSizeGreaterThanOrEqualTo(1);
         assertThat(videos.path("data").path("scoredVideoGroups")).hasSizeGreaterThanOrEqualTo(1);
+        assertThat(videos.path("data").path("videoGroups").get(0).path("duration").asInt())
+                .isEqualTo(videos.path("data").path("shots").get(0).path("duration").asInt());
         mockMvc.perform(post("/api/video-tasks/{taskId}/context", taskId)
                         .contentType("application/json")
                         .content("""

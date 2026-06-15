@@ -33,10 +33,6 @@ public class DirectorAgent {
         this.objectMapper = objectMapper;
     }
 
-    public DirectorPlan createPlan(GenerateRequest request, MarketInsight insight) {
-        return createPlan(request, insight, null);
-    }
-
     public DirectorPlan createPlan(GenerateRequest request, MarketInsight insight, String platform) {
         String style = StringUtils.hasText(request.style()) ? request.style() : "明亮、真实、节奏轻快";
         String productName = StringUtils.hasText(request.productName())

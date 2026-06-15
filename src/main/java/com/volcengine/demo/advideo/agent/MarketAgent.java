@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.volcengine.demo.advideo.client.ArkChatClient;
 import com.volcengine.demo.advideo.dto.GenerateRequest;
 import com.volcengine.demo.advideo.dto.GenerationResult.MarketInsight;
-import com.volcengine.demo.advideo.service.ProductSourceService;
 import com.volcengine.demo.advideo.service.PromptService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -18,13 +17,11 @@ public class MarketAgent {
     private static final java.util.regex.Pattern JSON_BLOCK = java.util.regex.Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```");
 
     private final ArkChatClient chatClient;
-    private final ProductSourceService productSourceService;
     private final PromptService promptService;
     private final ObjectMapper objectMapper;
 
-    public MarketAgent(ArkChatClient chatClient, ProductSourceService productSourceService, PromptService promptService, ObjectMapper objectMapper) {
+    public MarketAgent(ArkChatClient chatClient, PromptService promptService, ObjectMapper objectMapper) {
         this.chatClient = chatClient;
-        this.productSourceService = productSourceService;
         this.promptService = promptService;
         this.objectMapper = objectMapper;
     }
@@ -33,16 +30,13 @@ public class MarketAgent {
         String audience = valueOrDefault(request.targetAudience(), "25-40 岁、有明确购买需求的城市消费者");
         String productName = productName(request);
         String productDescription = valueOrDefault(request.productDescription(), "用户希望生成商品广告视频");
-        String pageSummary = productSourceService.extractPageSummary(request.productUrl());
         List<String> marketReferenceImages = marketReferenceImages(request.referenceImageUrls());
         String prompt = """
                 请根据以下输入生成电商营销视频策划 JSON。
                 产品：%s
                 描述：%s
                 用户原始需求：%s
-                商品链接：%s
                 商品图片素材：%s
-                页面摘要：%s
                 目标人群：%s
                 卖点：%s
                 请严格遵守系统提示词中的输出格式。
@@ -50,11 +44,9 @@ public class MarketAgent {
                 productName,
                 productDescription,
                 valueOrDefault(request.prompt(), "未提供"),
-                valueOrDefault(request.productUrl(), "未提供"),
                 marketReferenceImages.isEmpty()
                         ? "未提供"
                         : marketReferenceImages,
-                valueOrDefault(pageSummary, "未提供"),
                 audience,
                 valueOrDefault(request.sellingPoints(), "未提供")
         );

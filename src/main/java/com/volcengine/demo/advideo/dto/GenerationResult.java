@@ -2,15 +2,10 @@ package com.volcengine.demo.advideo.dto;
 
 import java.util.List;
 
-public record GenerationResult(
-        String taskId,
-        String productName,
-        MarketInsight marketInsight,
-        DirectorPlan directorPlan,
-        Evaluation evaluation,
-        MultimediaResult multimedia,
-        ReleasePlan releasePlan
-) {
+public final class GenerationResult {
+    private GenerationResult() {
+    }
+
     public record MarketInsight(
             String videoType,
             String productName,
@@ -34,14 +29,6 @@ public record GenerationResult(
             String narration,
             String caption,
             int seconds
-    ) {
-    }
-
-    public record Evaluation(
-            int score,
-            List<String> strengths,
-            List<String> risks,
-            String revisionSuggestion
     ) {
     }
 
