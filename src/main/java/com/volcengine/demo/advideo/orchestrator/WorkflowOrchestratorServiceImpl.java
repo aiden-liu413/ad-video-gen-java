@@ -256,8 +256,78 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         TaskStage fromStage = request == null || !StringUtils.hasText(request.fromStage())
                 ? TaskStage.IMAGE_GENERATING
                 : TaskStage.valueOf(request.fromStage());
+        applyRegenerateInputs(taskId, fromStage, request);
         clearFromStage(taskId, fromStage);
         advanceAfterCommit(taskId);
+    }
+
+    private void applyRegenerateInputs(String taskId, TaskStage fromStage, RegenerateVideoTaskRequest request) {
+        if (request == null) {
+            return;
+        }
+        if (request.taskInput() != null) {
+            updateTaskInput(taskId, request.taskInput());
+        }
+        WorkflowContext context = loadContext(taskId);
+        boolean changed = false;
+        if (fromStage.ordinal() >= TaskStage.SHOT_SCRIPT_GENERATING.ordinal()
+                && request.videoConfig() != null) {
+            context.setVideoConfig(request.videoConfig());
+            changed = true;
+        }
+        if (fromStage.ordinal() >= TaskStage.IMAGE_GENERATING.ordinal()
+                && request.shots() != null) {
+            context.setShots(request.shots());
+            changed = true;
+        }
+        if (fromStage.ordinal() >= TaskStage.VIDEO_GENERATING.ordinal()
+                && request.selectedImages() != null) {
+            context.setSelectedImages(request.selectedImages());
+            changed = true;
+        }
+        if (fromStage.ordinal() >= TaskStage.FINAL_COMPOSING.ordinal()
+                && request.selectedVideos() != null) {
+            context.setSelectedVideos(request.selectedVideos());
+            changed = true;
+        }
+        if (changed) {
+            saveContext(context);
+        }
+    }
+
+    private void updateTaskInput(String taskId, CreateVideoTaskRequest request) {
+        VideoTaskEntity task = taskRepository.findByTaskId(taskId).orElseThrow();
+        CreateVideoTaskRequest merged = mergeTaskInput(requestFromTask(task), request);
+        task.setInputType(valueOrDefault(merged.inputType(), task.getInputType()));
+        task.setInputText(merged.text());
+        task.setVideoType(valueOrDefault(merged.videoType(), task.getVideoType()));
+        task.setPlatform(merged.platform());
+        task.setDuration(merged.duration());
+        task.setAspectRatio(merged.aspectRatio());
+        task.setStyle(merged.style());
+        task.setRequestJson(toJson(merged));
+        task.setUpdatedAt(Instant.now());
+        taskRepository.save(task);
+        log.info("Update task input for regeneration, taskId={}, fromInputType={}, duration={}, aspectRatio={}",
+                taskId, merged.inputType(), merged.duration(), merged.aspectRatio());
+    }
+
+    private CreateVideoTaskRequest mergeTaskInput(CreateVideoTaskRequest current, CreateVideoTaskRequest patch) {
+        if (patch == null) {
+            return current;
+        }
+        return new CreateVideoTaskRequest(
+                valueOrDefault(patch.inputType(), current.inputType()),
+                patch.text() == null ? current.text() : patch.text(),
+                patch.imageUrls() == null ? current.imageUrls() : patch.imageUrls(),
+                patch.videoType() == null ? current.videoType() : patch.videoType(),
+                patch.platform() == null ? current.platform() : patch.platform(),
+                patch.duration() == null ? current.duration() : patch.duration(),
+                patch.aspectRatio() == null ? current.aspectRatio() : patch.aspectRatio(),
+                patch.style() == null ? current.style() : patch.style(),
+                patch.generateImageCount() == null ? current.generateImageCount() : patch.generateImageCount(),
+                patch.generateVideoCount() == null ? current.generateVideoCount() : patch.generateVideoCount()
+        );
     }
 
     @Override
@@ -930,6 +1000,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 task.getStatus(),
                 task.getStage(),
                 task.getProgress(),
+                requestFromTask(task),
                 context.getVideoConfig(),
                 context.getShots(),
                 context.getImageGroups(),

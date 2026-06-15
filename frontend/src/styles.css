@@ -743,6 +743,39 @@ pre {
   font-weight: 750;
 }
 
+.regen-fields {
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid #cce0ea;
+  border-radius: 8px;
+  background: rgba(247, 252, 254, 0.78);
+}
+
+.regen-fields textarea {
+  min-height: 70px;
+}
+
+.regen-shot-list {
+  display: grid;
+  gap: 10px;
+}
+
+.regen-shot {
+  display: grid;
+  grid-template-columns: 88px 80px minmax(180px, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.regen-shot textarea,
+.regen-shot input:nth-of-type(2),
+.regen-shot input:nth-of-type(3) {
+  grid-column: 1 / -1;
+}
+
 .final-title {
   margin-bottom: 16px;
 }

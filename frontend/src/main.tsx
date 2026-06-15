@@ -129,11 +129,35 @@ type FinalVideo = {
   selectedVideos: SelectedVideo[];
 };
 
+type TaskRequest = {
+  inputType: "product_image";
+  text?: string;
+  imageUrls?: string[];
+  videoType?: string;
+  platform?: string;
+  duration?: number;
+  aspectRatio?: string;
+  style?: string;
+  generateImageCount?: number;
+  generateVideoCount?: number;
+};
+
+type RegenerateDraft = {
+  taskInput: TaskRequest;
+  videoConfig: VideoConfig;
+  shots: Shot[];
+  imageGroups: ShotImageGroup[];
+  videoGroups: ShotVideoGroup[];
+  selectedImages: Record<string, string>;
+  selectedVideos: Record<string, string>;
+};
+
 type TaskDetail = {
   taskId: string;
   status: string;
   stage: TaskStage;
   progress: number;
+  request?: TaskRequest;
   videoConfig?: VideoConfig;
   shots: Shot[];
   imageGroups: ShotImageGroup[];
@@ -211,6 +235,7 @@ type WorkflowViewProps = {
   videoScoresJson: string;
   regenerateStage: TaskStage;
   regenerateReason: string;
+  regenerateDraft: RegenerateDraft;
   setSelectedImages: (value: Record<string, string>) => void;
   setSelectedVideos: (value: Record<string, string>) => void;
   setEditableShots: (value: Shot[]) => void;
@@ -218,6 +243,7 @@ type WorkflowViewProps = {
   setVideoScoresJson: (value: string) => void;
   setRegenerateStage: (value: TaskStage) => void;
   setRegenerateReason: (value: string) => void;
+  setRegenerateDraft: (value: RegenerateDraft) => void;
   onAdvance: () => void;
   onSaveEdits: () => void;
   onSaveSelections: () => void;
@@ -255,6 +281,37 @@ const aspectRatioOptions = [
 
 const durationOptions = ["5", "10", "15", "30"];
 
+const emptyVideoConfig: VideoConfig = {
+  videoType: "商品展示视频",
+  productInfo: { name: "", sellingPoint: "", resources: [] },
+  targetAudience: "",
+  platform: "mobile",
+  duration: 15,
+  aspectRatio: "9:16",
+  videoAdvice: ""
+};
+
+const emptyRegenerateDraft: RegenerateDraft = {
+  taskInput: {
+    inputType: "product_image",
+    text: "",
+    imageUrls: [],
+    videoType: "商品展示视频",
+    platform: "mobile",
+    duration: 15,
+    aspectRatio: "9:16",
+    style: "",
+    generateImageCount: 4,
+    generateVideoCount: 2
+  },
+  videoConfig: emptyVideoConfig,
+  shots: [],
+  imageGroups: [],
+  videoGroups: [],
+  selectedImages: {},
+  selectedVideos: {}
+};
+
 const stages: Array<{ stage: TaskStage; label: string; icon: React.ReactNode }> = [
   { stage: "CREATED", label: "创建", icon: <Check size={16} /> },
   { stage: "MARKET_PLANNING", label: "营销策划", icon: <Sparkles size={16} /> },
@@ -280,6 +337,7 @@ function App() {
   const [editableShots, setEditableShots] = useState<Shot[]>([]);
   const [imageScoresJson, setImageScoresJson] = useState("");
   const [videoScoresJson, setVideoScoresJson] = useState("");
+  const [regenerateDraft, setRegenerateDraft] = useState<RegenerateDraft>(emptyRegenerateDraft);
 
   useEffect(() => {
     void loadTasks();
@@ -295,6 +353,11 @@ function App() {
     const timer = window.setInterval(() => void loadTask(taskId), 2500);
     return () => window.clearInterval(timer);
   }, [taskId, task?.status]);
+
+  useEffect(() => {
+    if (!task) return;
+    setRegenerateDraft(regenerateDraftFromTask(task));
+  }, [task?.taskId, task?.updatedAt, regenerateStage]);
 
   async function loadTasks() {
     const response = await fetch(`${API_BASE}/api/video-tasks`);
@@ -434,7 +497,8 @@ function App() {
     await postAction(`/api/video-tasks/${task.taskId}/regenerate`, "已重新生成", {
       fromStage: regenerateStage,
       reason: regenerateReason,
-      shotIds: []
+      shotIds: [],
+      ...regeneratePayload(regenerateStage, regenerateDraft)
     }, { waitForChange: true });
   }
 
@@ -499,6 +563,7 @@ function App() {
             videoScoresJson={videoScoresJson}
             regenerateStage={regenerateStage}
             regenerateReason={regenerateReason}
+            regenerateDraft={regenerateDraft}
             setSelectedImages={chooseImages}
             setSelectedVideos={chooseVideos}
             setEditableShots={setEditableShots}
@@ -506,6 +571,7 @@ function App() {
             setVideoScoresJson={setVideoScoresJson}
             setRegenerateStage={setRegenerateStage}
             setRegenerateReason={setRegenerateReason}
+            setRegenerateDraft={setRegenerateDraft}
             onAdvance={advance}
             onSaveEdits={saveCurrentEdits}
             onSaveSelections={saveSelections}
@@ -990,13 +1056,29 @@ function MediaGrid({
 }
 
 function RegenerateControls({
+  task,
   regenerateStage,
   regenerateReason,
+  regenerateDraft,
   setRegenerateStage,
   setRegenerateReason,
+  setRegenerateDraft,
   onRegenerate,
   busy
 }: WorkflowViewProps) {
+  const updateTaskInput = (patch: Partial<TaskRequest>) => setRegenerateDraft({ ...regenerateDraft, taskInput: { ...regenerateDraft.taskInput, ...patch } });
+  const updateVideoConfig = (patch: Partial<VideoConfig>) => setRegenerateDraft({ ...regenerateDraft, videoConfig: { ...regenerateDraft.videoConfig, ...patch } });
+  const updateProductInfo = (patch: Partial<ProductInfo>) => setRegenerateDraft({
+    ...regenerateDraft,
+    videoConfig: {
+      ...regenerateDraft.videoConfig,
+      productInfo: { ...regenerateDraft.videoConfig.productInfo, ...patch }
+    }
+  });
+  const updateShot = (shotId: string, patch: Partial<Shot>) => setRegenerateDraft({
+    ...regenerateDraft,
+    shots: regenerateDraft.shots.map((shot) => shot.shotId === shotId ? { ...shot, ...patch } : shot)
+  });
   return (
     <div className="regen">
       <span>重燃阶段:</span>
@@ -1008,6 +1090,61 @@ function RegenerateControls({
         <option value="FINAL_COMPOSING">最终合成</option>
       </select>
       <input value={regenerateReason} onChange={(event) => setRegenerateReason(event.target.value)} placeholder="重燃原因..." />
+      <div className="regen-fields">
+        {regenerateStage === "MARKET_PLANNING" && (
+          <>
+            <label>需求描述<textarea value={regenerateDraft.taskInput.text ?? ""} onChange={(event) => updateTaskInput({ text: event.target.value })} /></label>
+            <label>图片链接<textarea value={(regenerateDraft.taskInput.imageUrls ?? []).join("\n")} onChange={(event) => updateTaskInput({ imageUrls: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean) })} /></label>
+            <div className="metric-row">
+              <label>目标平台<input value={regenerateDraft.taskInput.platform ?? ""} onChange={(event) => updateTaskInput({ platform: event.target.value })} /></label>
+              <label>风格<input value={regenerateDraft.taskInput.style ?? ""} onChange={(event) => updateTaskInput({ style: event.target.value })} /></label>
+            </div>
+            <div className="metric-row">
+              <label>总时长<input type="number" min={1} value={regenerateDraft.taskInput.duration ?? 15} onChange={(event) => updateTaskInput({ duration: Number(event.target.value || 15) })} /></label>
+              <label>比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
+            </div>
+          </>
+        )}
+        {regenerateStage === "SHOT_SCRIPT_GENERATING" && (
+          <>
+            <div className="metric-row">
+              <label>商品名称<input value={regenerateDraft.videoConfig.productInfo?.name ?? ""} onChange={(event) => updateProductInfo({ name: event.target.value })} /></label>
+              <label>视频类型<input value={regenerateDraft.videoConfig.videoType ?? "商品展示视频"} onChange={(event) => updateVideoConfig({ videoType: event.target.value })} /></label>
+            </div>
+            <label>目标人群<textarea value={regenerateDraft.videoConfig.targetAudience ?? ""} onChange={(event) => updateVideoConfig({ targetAudience: event.target.value })} /></label>
+            <label>核心卖点<textarea value={regenerateDraft.videoConfig.productInfo?.sellingPoint ?? ""} onChange={(event) => updateProductInfo({ sellingPoint: event.target.value })} /></label>
+            <label>创意策略<textarea value={regenerateDraft.videoConfig.videoAdvice ?? ""} onChange={(event) => updateVideoConfig({ videoAdvice: event.target.value })} /></label>
+          </>
+        )}
+        {regenerateStage === "IMAGE_GENERATING" && (
+          <>
+            <div className="metric-row">
+              <label>候选图片数量<input type="number" min={1} max={10} value={regenerateDraft.taskInput.generateImageCount ?? 4} onChange={(event) => updateTaskInput({ generateImageCount: Number(event.target.value || 4) })} /></label>
+              <label>画面比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
+            </div>
+            <div className="regen-shot-list">
+              {regenerateDraft.shots.map((shot) => (
+                <div className="regen-shot" key={shot.shotId}>
+                  <b>{shot.shotId}</b>
+                  <input type="number" min={1} value={shot.duration ?? 5} onChange={(event) => updateShot(shot.shotId, { duration: Number(event.target.value || 5) })} />
+                  <textarea value={shot.prompt} onChange={(event) => updateShot(shot.shotId, { prompt: event.target.value })} />
+                  <input value={shot.action} onChange={(event) => updateShot(shot.shotId, { action: event.target.value })} />
+                  <input value={shot.words} onChange={(event) => updateShot(shot.shotId, { words: event.target.value })} />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {regenerateStage === "VIDEO_GENERATING" && (
+          <>
+            <label>候选视频数量<input type="number" min={1} max={5} value={regenerateDraft.taskInput.generateVideoCount ?? 2} onChange={(event) => updateTaskInput({ generateVideoCount: Number(event.target.value || 2) })} /></label>
+            <MediaGrid groups={task.scoredImageGroups} selected={regenerateDraft.selectedImages} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })} type="image" />
+          </>
+        )}
+        {regenerateStage === "FINAL_COMPOSING" && (
+          <MediaGrid groups={task.scoredVideoGroups} selected={regenerateDraft.selectedVideos} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedVideos: value })} type="video" />
+        )}
+      </div>
       <button onClick={onRegenerate} disabled={busy}>应用</button>
     </div>
   );
@@ -1015,6 +1152,79 @@ function RegenerateControls({
 
 function setFormValue(key: keyof FormState, value: string, setForm: React.Dispatch<React.SetStateAction<FormState>>) {
   setForm((previous) => ({ ...previous, [key]: value }));
+}
+
+function regenerateDraftFromTask(task: TaskDetail): RegenerateDraft {
+  return {
+    taskInput: {
+      inputType: "product_image",
+      text: task.request?.text ?? "",
+      imageUrls: task.request?.imageUrls ?? task.videoConfig?.productInfo?.resources ?? [],
+      videoType: task.request?.videoType ?? "商品展示视频",
+      platform: task.request?.platform ?? task.videoConfig?.platform ?? "mobile",
+      duration: task.request?.duration ?? task.videoConfig?.duration ?? 15,
+      aspectRatio: task.request?.aspectRatio ?? task.videoConfig?.aspectRatio ?? "9:16",
+      style: task.request?.style ?? "",
+      generateImageCount: task.request?.generateImageCount ?? 4,
+      generateVideoCount: task.request?.generateVideoCount ?? 2
+    },
+    videoConfig: task.videoConfig ?? emptyVideoConfig,
+    shots: task.shots ?? [],
+    imageGroups: task.scoredImageGroups ?? [],
+    videoGroups: task.scoredVideoGroups ?? [],
+    selectedImages: Object.fromEntries((task.selectedImages ?? []).map((item) => [item.shotId, item.image.assetId])),
+    selectedVideos: Object.fromEntries((task.selectedVideos ?? []).map((item) => [item.shotId, item.video.assetId]))
+  };
+}
+
+function regeneratePayload(stage: TaskStage, draft: RegenerateDraft) {
+  if (stage === "MARKET_PLANNING") {
+    return { taskInput: draft.taskInput };
+  }
+  if (stage === "SHOT_SCRIPT_GENERATING") {
+    return { taskInput: draft.taskInput, videoConfig: draft.videoConfig };
+  }
+  if (stage === "IMAGE_GENERATING") {
+    return { taskInput: draft.taskInput, shots: draft.shots };
+  }
+  if (stage === "VIDEO_GENERATING") {
+    return {
+      taskInput: draft.taskInput,
+      selectedImages: selectedImagesFromDraft(draft)
+    };
+  }
+  if (stage === "FINAL_COMPOSING") {
+    return {
+      selectedVideos: selectedVideosFromDraft(draft)
+    };
+  }
+  return {};
+}
+
+function selectedImagesFromDraft(draft: RegenerateDraft): SelectedImage[] {
+  return Object.entries(draft.selectedImages)
+    .flatMap(([shotId, assetId]) => {
+      const group = draftImageGroups(draft).find((item) => item.shotId === shotId);
+      const image = group?.images.find((item) => item.assetId === assetId);
+      return group && image ? [{ shotId, duration: group.duration, image, prompt: group.prompt, action: group.action, words: group.words }] : [];
+    });
+}
+
+function selectedVideosFromDraft(draft: RegenerateDraft): SelectedVideo[] {
+  return Object.entries(draft.selectedVideos)
+    .flatMap(([shotId, assetId]) => {
+      const group = draftVideoGroups(draft).find((item) => item.shotId === shotId);
+      const video = group?.videos.find((item) => item.assetId === assetId);
+      return group && video ? [{ shotId, duration: group.duration, video, words: group.words, action: group.action }] : [];
+    });
+}
+
+function draftImageGroups(draft: RegenerateDraft): ShotImageGroup[] {
+  return draft.imageGroups;
+}
+
+function draftVideoGroups(draft: RegenerateDraft): ShotVideoGroup[] {
+  return draft.videoGroups;
 }
 
 function fileToDataUrl(file: File) {

@@ -16,6 +16,7 @@ public record TaskDetailResponse(
         String status,
         String stage,
         Integer progress,
+        CreateVideoTaskRequest request,
         VideoConfig videoConfig,
         List<Shot> shots,
         List<ShotImageGroup> imageGroups,
