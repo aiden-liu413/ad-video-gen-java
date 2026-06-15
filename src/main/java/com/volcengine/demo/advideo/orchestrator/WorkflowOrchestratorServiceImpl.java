@@ -342,7 +342,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 Map.of("keywords", insight.keywords(), "creativeStrategy", insight.creativeStrategy())
         );
         return new VideoConfig(
-                valueOrDefault(insight.videoType(), valueOrDefault(request.videoType(), "商品展示视频")),
+                valueOrDefault(insight.videoType(), "商品展示视频"),
                 productInfo,
                 insight.targetAudience(),
                 valueOrDefault(request.platform(), "抖音"),

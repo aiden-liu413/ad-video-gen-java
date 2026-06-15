@@ -233,7 +233,7 @@ const initialForm: FormState = {
   inputType: "product_image",
   text: "参考上传的商品图片，生成一条 15 秒带货广告视频。商品：玻璃水。卖点：去虫胶、无甲醇、去油膜。",
   imageUrls: "",
-  videoType: "产品展示",
+  videoType: "商品展示视频",
   platform: "mobile",
   duration: "15",
   aspectRatio: "9:16",
@@ -626,10 +626,7 @@ function CreateTaskView({
         <h3>生成配置</h3>
         <label>
           视频类型
-          <select value={form.videoType} onChange={(event) => setFormValue("videoType", event.target.value, setForm)}>
-            <option>产品展示</option>
-            <option>说明视频</option>
-          </select>
+          <input value="商品展示视频" readOnly />
         </label>
         <div>
           <span className="field-label">目标平台</span>

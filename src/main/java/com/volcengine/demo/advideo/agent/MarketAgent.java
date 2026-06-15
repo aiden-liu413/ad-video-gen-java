@@ -15,6 +15,7 @@ import java.util.List;
 public class MarketAgent {
 
     private static final java.util.regex.Pattern JSON_BLOCK = java.util.regex.Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```");
+    private static final String DEFAULT_VIDEO_TYPE = "商品展示视频";
 
     private final ArkChatClient chatClient;
     private final PromptService promptService;
@@ -69,9 +70,9 @@ public class MarketAgent {
                 JsonNode root = objectMapper.readTree(candidate);
                 JsonNode productInfo = root.path("product_info");
                 String name = valueOrDefault(productInfo.path("name").asText(), fallbackProductName);
-                String sellingPoint = valueOrDefault(productInfo.path("selling_point").asText(), "降低决策成本、突出差异化卖点、建立可信任的使用场景");
+                String sellingPoint = valueOrDefault(productInfo.path("selling_point").asText(), "根据商品图片和用户描述提炼核心卖点，用于突出购买理由");
                 String audience = valueOrDefault(productInfo.path("audience").asText(), fallbackAudience);
-                String videoType = valueOrDefault(root.path("video_type").asText(), "商品展示视频");
+                String videoType = normalizeVideoType(root.path("video_type").asText());
                 String videoAdvice = valueOrDefault(root.path("video_advice").asText(), response);
                 return new ParsedMarketInsight(
                         videoType,
@@ -86,10 +87,10 @@ public class MarketAgent {
             }
         }
         return new ParsedMarketInsight(
-                "商品展示视频",
+                DEFAULT_VIDEO_TYPE,
                 fallbackProductName,
                 fallbackAudience,
-                List.of("降低决策成本", "突出差异化卖点", "建立可信任的使用场景"),
+                List.of("根据商品图片和用户描述提炼核心卖点，用于突出购买理由"),
                 List.of(fallbackProductName, "限时优惠", "真实体验", "效率提升"),
                 valueOrDefault(response, "")
         );
@@ -119,6 +120,23 @@ public class MarketAgent {
 
     private String valueOrDefault(String value, String fallback) {
         return StringUtils.hasText(value) ? value : fallback;
+    }
+
+    private String normalizeVideoType(String value) {
+        if (!StringUtils.hasText(value)) {
+            return DEFAULT_VIDEO_TYPE;
+        }
+        String text = value.trim();
+        if (text.contains("对比") || text.contains("测评")) {
+            return "对比测评视频";
+        }
+        if (text.contains("功能") || text.contains("演示") || text.contains("说明")) {
+            return "功能演示视频";
+        }
+        if (text.contains("种草") || text.contains("场景") || text.contains("生活方式")) {
+            return "场景种草视频";
+        }
+        return DEFAULT_VIDEO_TYPE;
     }
 
     private List<String> marketReferenceImages(List<String> referenceImageUrls) {
