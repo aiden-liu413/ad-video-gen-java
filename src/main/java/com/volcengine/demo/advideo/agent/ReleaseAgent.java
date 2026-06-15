@@ -39,10 +39,12 @@ public class ReleaseAgent {
         String copy = chatClient.complete(
                 promptService.releaseAgent(),
                 """
-                        请为 %s 生成可发布的短视频广告文案。
+                        请根据以下信息生成可发布的短视频广告文案。
+                        商品：%s
                         发布平台：%s
                         平台文案要求：%s
                         视频地址：%s
+                        请直接输出文案正文。
                         """.formatted(productName, targetPlatform, releaseAdvice, multimedia.videoUrl())
         );
         return new ReleasePlan(

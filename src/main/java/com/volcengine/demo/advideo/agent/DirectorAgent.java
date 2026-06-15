@@ -39,21 +39,36 @@ public class DirectorAgent {
 
     public DirectorPlan createPlan(GenerateRequest request, MarketInsight insight, String platform) {
         String style = StringUtils.hasText(request.style()) ? request.style() : "明亮、真实、节奏轻快";
-        String productName = StringUtils.hasText(request.productName()) ? request.productName() : "广告商品";
+        String productName = StringUtils.hasText(request.productName())
+                ? request.productName()
+                : StringUtils.hasText(insight.productName()) ? insight.productName() : "广告商品";
         String targetPlatform = StringUtils.hasText(platform) ? platform : "通用短视频平台";
         String platformAdvice = platformAdvice(targetPlatform);
         String script = chatClient.complete(
                 promptService.directorStoryboardAgent(),
                 """
-                        请为产品广告生成多段式短视频脚本 具体几段由你根据实际情况决定 不要超过 3。
+                        请根据以下信息生成电商广告分镜脚本，具体几段由你根据实际情况决定，不要超过 4。
                         产品：%s
                         用户原始需求：%s
-                        期望时长：%s
+                        期望时长：%s秒
                         发布平台：%s
                         平台脚本要求：%s
                         风格：%s
+                        目标人群：%s
+                        核心卖点：%s
                         市场策略：%s
-                        """.formatted(productName, request.prompt(), request.duration(), targetPlatform, platformAdvice, style, insight.creativeStrategy())
+                        请严格遵守系统提示词中的 JSON 输出格式。
+                        """.formatted(
+                        productName,
+                        request.prompt(),
+                        request.duration(),
+                        targetPlatform,
+                        platformAdvice,
+                        style,
+                        insight.targetAudience(),
+                        String.join("、", insight.valuePropositions()),
+                        insight.creativeStrategy()
+                )
         );
 
         Optional<ParsedStoryboard> parsedStoryboard = parseStoryboard(script);

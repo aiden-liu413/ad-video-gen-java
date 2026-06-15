@@ -593,18 +593,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         String response = chatClient.complete(
                 promptService.evaluateAgent(),
                 """
-                        请作为广告素材评估 Agent，对生成的%s候选素材进行评分。
-                        只返回 JSON，不要返回 Markdown。
-                        JSON 格式：
-                        {"score": 88, "reason": "一句中文评分理由"}
-
-                        评分标准：
-                        1. 与分镜视觉提示词的匹配度
-                        2. 是否体现动作/镜头要求
-                        3. 是否能支撑口播/字幕表达
-                        4. 广告可用性、主体清晰度和商品展示效果
-                        5. 是否存在明显瑕疵、水印、主体漂移或信息不完整
-
+                        请评估以下%s候选素材，并严格按照系统提示词中的当前输出格式返回 JSON。
                         分镜 ID：%s
                         视觉提示词：%s
                         动作/镜头：%s

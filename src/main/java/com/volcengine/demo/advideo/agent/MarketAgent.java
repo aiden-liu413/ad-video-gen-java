@@ -36,7 +36,7 @@ public class MarketAgent {
         String pageSummary = productSourceService.extractPageSummary(request.productUrl());
         List<String> marketReferenceImages = marketReferenceImages(request.referenceImageUrls());
         String prompt = """
-                请作为广告市场分析 Agent，为以下产品提炼目标人群、关键词和创意策略。
+                请根据以下输入生成电商营销视频策划 JSON。
                 产品：%s
                 描述：%s
                 用户原始需求：%s
@@ -45,6 +45,7 @@ public class MarketAgent {
                 页面摘要：%s
                 目标人群：%s
                 卖点：%s
+                请严格遵守系统提示词中的输出格式。
                 """.formatted(
                 productName,
                 productDescription,
