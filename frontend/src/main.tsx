@@ -590,7 +590,13 @@ function Topbar({
 }) {
   return (
     <header className="topbar">
-      <h1>AIVision Control</h1>
+      <div className="brand-lockup" aria-label="AIVision Control">
+        <LogoMark />
+        <div>
+          <h1>AIVision Control</h1>
+          <p>可控式 AI 营销视频工作台</p>
+        </div>
+      </div>
       <div className="top-actions">
         <button className="primary" onClick={onNewTask}>
           <Plus size={18} />
@@ -598,6 +604,29 @@ function Topbar({
         </button>
       </div>
     </header>
+  );
+}
+
+function LogoMark() {
+  return (
+    <svg className="logo-mark" viewBox="0 0 48 48" role="img" aria-hidden="true">
+      <defs>
+        <linearGradient id="logoGradient" x1="8" y1="7" x2="40" y2="42" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#31D0D8" />
+          <stop offset="1" stopColor="#1494D2" />
+        </linearGradient>
+      </defs>
+      <rect x="5" y="6" width="38" height="36" rx="12" fill="url(#logoGradient)" />
+      <path
+        d="M16 30V18.8c0-1.6 1.8-2.5 3.1-1.6l14.2 9.1c1.2.8 1.2 2.6 0 3.4l-14.2 9.1c-1.3.8-3.1-.1-3.1-1.7V30Z"
+        fill="rgba(255,255,255,0.95)"
+      />
+      <circle cx="18.5" cy="18.5" r="4.5" fill="#0F2B3F" fillOpacity="0.18" />
+      <path
+        d="M34 12.8l1.1 2.2 2.4 1.1-2.4 1.1-1.1 2.2-1.1-2.2-2.4-1.1 2.4-1.1 1.1-2.2Z"
+        fill="white"
+      />
+    </svg>
   );
 }
 

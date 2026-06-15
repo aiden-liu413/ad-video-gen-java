@@ -93,7 +93,7 @@ pre {
 .topbar {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 260px auto;
+  grid-template-columns: minmax(280px, 1fr) auto;
   align-items: center;
   gap: 20px;
   padding: 14px 22px;
@@ -102,10 +102,33 @@ pre {
   backdrop-filter: blur(14px);
 }
 
+.brand-lockup {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-mark {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  filter: drop-shadow(0 10px 16px rgba(20, 148, 210, 0.22));
+}
+
 .topbar h1 {
   margin: 0;
   font-size: 20px;
   letter-spacing: 0;
+  line-height: 1.1;
+}
+
+.brand-lockup p {
+  margin: 4px 0 0;
+  color: #6b7f91;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .top-actions {
@@ -981,6 +1004,10 @@ blockquote {
 
   .topbar {
     grid-template-columns: 1fr;
+  }
+
+  .brand-lockup {
+    align-items: flex-start;
   }
 
   .sidebar {
