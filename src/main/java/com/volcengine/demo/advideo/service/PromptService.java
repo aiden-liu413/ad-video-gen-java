@@ -23,24 +23,12 @@ public class PromptService {
         return get("prompts/director-agent/prompt.md", "PROMPT_STORYBOARD_AGENT");
     }
 
-    public String directorImageAgent() {
-        return get("prompts/director-agent/prompt.md", "PROMPT_IMAGE_AGENT");
-    }
-
-    public String directorVideoAgent() {
-        return get("prompts/director-agent/prompt.md", "PROMPT_VIDEO_AGENT");
-    }
-
     public String evaluateAgent() {
         return get("prompts/evaluate-agent/prompt.md", "PROMPT_EVALUATE_AGENT");
     }
 
     public String releaseAgent() {
         return get("prompts/release-agent/prompt.md", "PROMPT_RELEASE_AGENT");
-    }
-
-    public String multimediaRootAgent() {
-        return get("prompts/multimedia-agent/prompt.md", "PROMPT_ROOT_AGENT");
     }
 
     private String get(String resourcePath, String constantName) {
