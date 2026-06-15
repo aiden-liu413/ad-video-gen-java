@@ -4,11 +4,13 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.volcengine.demo.advideo.config.AdVideoProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -22,7 +24,12 @@ public class SeedreamImageClient {
 
     public SeedreamImageClient(AdVideoProperties properties, RestClient.Builder restClientBuilder) {
         this.properties = properties;
-        this.restClient = restClientBuilder.baseUrl(properties.image().baseUrl()).build();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        // 连接超时：建立 TCP 连接的最大等待时间
+        factory.setConnectTimeout(Duration.ofSeconds(3));
+        // 读取超时：连接建立后，等待服务端返回数据的最大时间
+        factory.setReadTimeout(Duration.ofSeconds(1800));
+        this.restClient = restClientBuilder.requestFactory(factory).baseUrl(properties.image().baseUrl()).build();
     }
 
     public List<String> generateImages(String prompt, List<String> referenceImageUrls, int imageCount) {
@@ -49,8 +56,6 @@ public class SeedreamImageClient {
                 "image", referenceImageUrls == null ? List.of() : referenceImageUrls,
                 "sequential_image_generation", "auto",
                 "sequential_image_generation_options", Map.of("max_images", maxImages),
-                "size", "2K",
-                "output_format", "png",
                 "watermark", false
         );
         ImageResponse response;
