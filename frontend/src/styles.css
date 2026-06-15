@@ -319,6 +319,94 @@ pre {
   font-size: 16px;
 }
 
+.process-board {
+  margin-top: 32px;
+  max-width: 360px;
+  padding: 16px;
+  border: 1px solid rgba(169, 205, 218, 0.88);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 18px 38px rgba(22, 95, 122, 0.08);
+}
+
+.process-kicker {
+  margin-bottom: 14px;
+  color: #178aa1;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.process-line {
+  position: relative;
+  display: grid;
+  gap: 12px;
+}
+
+.process-line::before {
+  content: "";
+  position: absolute;
+  left: 17px;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  background: linear-gradient(180deg, #1bbace, rgba(27, 186, 206, 0.08));
+}
+
+.process-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.process-icon {
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #9ed5e1;
+  border-radius: 8px;
+  background: #eefbfe;
+  color: #0b8197;
+}
+
+.process-step b {
+  display: block;
+  margin-top: 1px;
+  color: #15304a;
+  font-size: 14px;
+}
+
+.process-step span {
+  display: block;
+  margin-top: 3px;
+  color: #62788c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.process-principle {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #d6e8ef;
+}
+
+.process-principle b {
+  display: block;
+  color: #15304a;
+  font-size: 14px;
+}
+
+.process-principle span {
+  display: block;
+  margin-top: 6px;
+  color: #60778b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .input-card,
 .config-card,
 .panel-card,
@@ -878,6 +966,10 @@ blockquote {
 
   .hero-copy {
     padding-top: 0;
+  }
+
+  .process-board {
+    max-width: none;
   }
 }
 

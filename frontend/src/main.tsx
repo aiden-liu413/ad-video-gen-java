@@ -657,6 +657,22 @@ function CreateTaskView({
       <section className="hero-copy">
         <h2>初始化生成</h2>
         <p>上传本地商品图片，或粘贴图片链接，再定义电影级输出的风格轨迹。</p>
+        <div className="process-board" aria-label="核心流程设计图和理念">
+          <div className="process-kicker">核心流程设计</div>
+          <div className="process-line">
+            <ProcessStep icon={<UploadCloud size={18} />} title="素材输入" text="本地图片或图片链接作为商品视觉锚点。" />
+            <ProcessStep icon={<BarChart3 size={18} />} title="营销策划" text="LLM 提炼商品名称、目标人群、核心卖点和投放建议。" />
+            <ProcessStep icon={<FileText size={18} />} title="分镜脚本" text="把营销方案拆成可审核、可编辑的分镜片段。" />
+            <ProcessStep icon={<ImageIcon size={18} />} title="图片生成与评估" text="一次组图生成候选图，再由模型按分镜匹配度评分。" />
+            <ProcessStep icon={<Video size={18} />} title="视频生成与评估" text="按分镜时长和比例生成片段，评分后选择最佳素材。" />
+            <ProcessStep icon={<Archive size={18} />} title="最终合成" text="FFmpeg 串联合格片段，生成可预览的最终视频。" />
+            <ProcessStep icon={<Rocket size={18} />} title="人工重燃" text="任一步都能修改该步输入参数后重跑，并保留已完成历史。" />
+          </div>
+          <div className="process-principle">
+            <b>设计理念</b>
+            <span>AI 负责生成候选方案，人负责确认方向；每个节点先沉淀结构化结果，再进入下一步，让广告生成过程可追踪、可编辑、可重试。</span>
+          </div>
+        </div>
       </section>
       <section className="input-card">
         <div className="source-title">
@@ -741,6 +757,18 @@ function CreateTaskView({
         </button>
       </aside>
     </form>
+  );
+}
+
+function ProcessStep({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <div className="process-step">
+      <div className="process-icon">{icon}</div>
+      <div>
+        <b>{title}</b>
+        <span>{text}</span>
+      </div>
+    </div>
   );
 }
 
