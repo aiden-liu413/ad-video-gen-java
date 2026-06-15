@@ -12,6 +12,8 @@ public record GenerationResult(
         ReleasePlan releasePlan
 ) {
     public record MarketInsight(
+            String videoType,
+            String productName,
             String targetAudience,
             List<String> valuePropositions,
             List<String> keywords,

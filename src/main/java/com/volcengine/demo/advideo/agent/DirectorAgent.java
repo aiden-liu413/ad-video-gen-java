@@ -21,8 +21,6 @@ import java.util.regex.Pattern;
 public class DirectorAgent {
 
     private static final Pattern JSON_BLOCK = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```");
-    private static final Pattern SHOT_BLOCK = Pattern.compile("分镜\\s*(\\d+)\\s*[：:]([\\s\\S]*?)(?=\\n\\s*分镜\\s*\\d+\\s*[：:]|\\z)");
-    private static final Pattern TITLE = Pattern.compile("视频标题\\s*[：:]\\s*(.+)");
     private static final Pattern FIRST_NUMBER = Pattern.compile("\\d+");
 
     private final ArkChatClient chatClient;
@@ -36,8 +34,14 @@ public class DirectorAgent {
     }
 
     public DirectorPlan createPlan(GenerateRequest request, MarketInsight insight) {
+        return createPlan(request, insight, null);
+    }
+
+    public DirectorPlan createPlan(GenerateRequest request, MarketInsight insight, String platform) {
         String style = StringUtils.hasText(request.style()) ? request.style() : "明亮、真实、节奏轻快";
         String productName = StringUtils.hasText(request.productName()) ? request.productName() : "广告商品";
+        String targetPlatform = StringUtils.hasText(platform) ? platform : "通用短视频平台";
+        String platformAdvice = platformAdvice(targetPlatform);
         String script = chatClient.complete(
                 promptService.directorStoryboardAgent(),
                 """
@@ -45,33 +49,30 @@ public class DirectorAgent {
                         产品：%s
                         用户原始需求：%s
                         期望时长：%s
+                        发布平台：%s
+                        平台脚本要求：%s
                         风格：%s
                         市场策略：%s
-                        请输出可被后续多媒体步骤直接使用的分镜脚本，字段包含 id、image、action、reference、words。
-                        """.formatted(productName, request.prompt(), request.duration(), style, insight.creativeStrategy())
+                        """.formatted(productName, request.prompt(), request.duration(), targetPlatform, platformAdvice, style, insight.creativeStrategy())
         );
 
-        List<Scene> scenes = parseScenes(script).orElseGet(() -> defaultScenes(style, productName));
-        String title = parseTitle(script).orElse(productName + " 场景化广告");
+        Optional<ParsedStoryboard> parsedStoryboard = parseStoryboard(script);
+        List<Scene> scenes = parsedStoryboard.map(ParsedStoryboard::scenes)
+                .orElseGet(() -> defaultScenes(style, productName, platformAdvice));
+        String title = parsedStoryboard.map(ParsedStoryboard::title)
+                .filter(StringUtils::hasText)
+                .orElse(productName + " 场景化广告");
         return new DirectorPlan(title, script, scenes);
     }
 
-    private Optional<List<Scene>> parseScenes(String script) {
+    private Optional<ParsedStoryboard> parseStoryboard(String script) {
         if (!StringUtils.hasText(script)) {
             return Optional.empty();
         }
-        Optional<List<Scene>> jsonScenes = parseJsonScenes(script);
-        if (jsonScenes.isPresent()) {
-            return jsonScenes;
-        }
-        List<Scene> textScenes = parseTextScenes(script);
-        return textScenes.isEmpty() ? Optional.empty() : Optional.of(textScenes);
-    }
-
-    private Optional<List<Scene>> parseJsonScenes(String script) {
         for (String candidate : jsonCandidates(script)) {
             try {
                 JsonNode root = objectMapper.readTree(candidate);
+                String title = root.path("video_title").asText("");
                 JsonNode shotList = root.path("shot_list");
                 if (!shotList.isArray() || shotList.isEmpty()) {
                     continue;
@@ -79,9 +80,9 @@ public class DirectorAgent {
                 List<Scene> scenes = new ArrayList<>();
                 int index = 1;
                 for (JsonNode shot : shotList) {
-                    String image = text(shot, "image", "prompt");
-                    String action = text(shot, "action", "video_prompt");
-                    String words = text(shot, "words", "caption");
+                    String image = shot.path("image").asText("");
+                    String action = shot.path("action").asText("");
+                    String words = shot.path("words").asText("");
                     scenes.add(new Scene(
                             shotIndex(shot.path("id").asText(), index),
                             image,
@@ -91,7 +92,7 @@ public class DirectorAgent {
                     ));
                     index++;
                 }
-                return Optional.of(scenes);
+                return Optional.of(new ParsedStoryboard(title, scenes));
             } catch (Exception ignored) {
                 // Try the next possible JSON fragment.
             }
@@ -114,72 +115,42 @@ public class DirectorAgent {
         return candidates;
     }
 
-    private List<Scene> parseTextScenes(String script) {
-        List<Scene> scenes = new ArrayList<>();
-        Matcher matcher = SHOT_BLOCK.matcher(script);
-        while (matcher.find()) {
-            int index = Integer.parseInt(matcher.group(1));
-            String block = matcher.group(2);
-            String image = field(block, "image", "画面", "首帧图画面").orElse("");
-            String action = field(block, "action", "动作", "运镜").orElse("");
-            String words = field(block, "words", "口播", "台词", "文案").orElse("");
-            if (StringUtils.hasText(image) || StringUtils.hasText(action) || StringUtils.hasText(words)) {
-                scenes.add(new Scene(index, image, action, words, 5));
-            }
-        }
-        return scenes;
-    }
-
-    private Optional<String> field(String block, String... names) {
-        for (String name : names) {
-            Pattern pattern = Pattern.compile("(?m)^\\s*" + Pattern.quote(name) + "\\s*[：:]\\s*(.+)$");
-            Matcher matcher = pattern.matcher(block);
-            if (matcher.find() && StringUtils.hasText(matcher.group(1))) {
-                return Optional.of(matcher.group(1).trim());
-            }
-        }
-        return Optional.empty();
-    }
-
-    private Optional<String> parseTitle(String script) {
-        if (!StringUtils.hasText(script)) {
-            return Optional.empty();
-        }
-        Matcher matcher = TITLE.matcher(script);
-        if (matcher.find() && StringUtils.hasText(matcher.group(1))) {
-            return Optional.of(matcher.group(1).trim());
-        }
-        return Optional.empty();
-    }
-
-    private List<Scene> defaultScenes(String style, String productName) {
+    private List<Scene> defaultScenes(String style, String productName, String platformAdvice) {
         return List.of(
                 new Scene(1,
-                        style + "，用户遇到典型痛点，镜头聚焦真实生活/工作场景",
+                        style + "，" + platformAdvice + "，用户遇到典型痛点，镜头聚焦真实生活/工作场景",
                         "你是否也遇到过这样的麻烦？",
                         "痛点出现",
                         4),
                 new Scene(2,
-                        style + "，产品以清晰特写出现，展示核心功能和使用动作",
+                        style + "，" + platformAdvice + "，产品以清晰特写出现，展示核心功能和使用动作",
                         productName + "，让复杂问题变简单。",
                         "核心卖点",
                         6),
                 new Scene(3,
-                        style + "，用户获得结果，画面给出购买或咨询引导",
+                        style + "，" + platformAdvice + "，用户获得结果，画面给出购买或咨询引导",
                         "现在体验，开启更高效的一天。",
                         "立即了解",
                         5)
         );
     }
 
-    private String text(JsonNode node, String... fieldNames) {
-        for (String fieldName : fieldNames) {
-            String value = node.path(fieldName).asText("");
-            if (StringUtils.hasText(value)) {
-                return value;
-            }
+    private String platformAdvice(String platform) {
+        String source = platform == null ? "" : platform;
+        String normalized = source.toLowerCase();
+        if (normalized.contains("douyin") || source.contains("抖音") || source.contains("mobile")) {
+            return "前 3 秒强钩子，竖屏近景，字幕短促醒目，节奏快，结尾明确购买引导";
         }
-        return "";
+        if (normalized.contains("xiaohongshu") || source.contains("小红书")) {
+            return "生活方式种草语气，强调真实体验和细节质感，镜头自然，文案更像使用心得";
+        }
+        if (normalized.contains("bilibili") || source.contains("b站") || source.contains("哔哩")) {
+            return "信息密度更高，讲清楚产品原理和场景对比，允许稍长铺垫但要有清晰结构";
+        }
+        if (normalized.contains("desktop") || normalized.contains("tv")) {
+            return "画面信息更完整，镜头稳定，适合横屏展示产品结构和使用前后对比";
+        }
+        return "按短视频广告节奏组织，开头给痛点，中段展示卖点，结尾给行动引导";
     }
 
     private int shotIndex(String id, int fallback) {
@@ -196,5 +167,8 @@ public class DirectorAgent {
             seconds = shot.path("duration").asInt(0);
         }
         return seconds > 0 ? seconds : 5;
+    }
+
+    private record ParsedStoryboard(String title, List<Scene> scenes) {
     }
 }

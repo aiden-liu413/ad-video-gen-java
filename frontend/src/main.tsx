@@ -1,0 +1,1188 @@
+import React, { useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Archive,
+  BarChart3,
+  Check,
+  CheckCircle2,
+  Copy,
+  Download,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  Monitor,
+  Plus,
+  Rocket,
+  Smartphone,
+  Sparkles,
+  UploadCloud,
+  Video,
+} from "lucide-react";
+import "./styles.css";
+
+const API_BASE = "";
+
+type TaskStage =
+  | "CREATED"
+  | "MARKET_PLANNING"
+  | "SHOT_SCRIPT_GENERATING"
+  | "IMAGE_GENERATING"
+  | "IMAGE_EVALUATING"
+  | "IMAGE_SELECTING"
+  | "VIDEO_GENERATING"
+  | "VIDEO_EVALUATING"
+  | "VIDEO_SELECTING"
+  | "FINAL_COMPOSING"
+  | "COMPLETED"
+  | "FAILED";
+
+type ProductInfo = {
+  name: string;
+  sellingPoint: string;
+  resources: string[];
+};
+
+type VideoConfig = {
+  videoType: string;
+  productInfo: ProductInfo;
+  targetAudience: string;
+  platform: string;
+  duration: number;
+  aspectRatio: string;
+  videoAdvice: string;
+};
+
+type Shot = {
+  shotId: string;
+  orderNo: number;
+  duration: number;
+  prompt: string;
+  action: string;
+  words: string;
+  reference: string;
+  camera: string;
+  sceneType: string;
+};
+
+type ImageCandidate = {
+  assetId: string;
+  shotId: string;
+  id: number;
+  url: string;
+  score?: number;
+  reason?: string;
+  selected?: boolean;
+};
+
+type VideoCandidate = {
+  assetId: string;
+  shotId: string;
+  id: number;
+  url: string;
+  score?: number;
+  reason?: string;
+  selected?: boolean;
+};
+
+type ShotImageGroup = {
+  shotId: string;
+  prompt: string;
+  action: string;
+  words: string;
+  reference: string;
+  images: ImageCandidate[];
+};
+
+type ShotVideoGroup = {
+  shotId: string;
+  prompt: string;
+  action: string;
+  words: string;
+  reference: string;
+  videos: VideoCandidate[];
+};
+
+type SelectedImage = {
+  shotId: string;
+  image: ImageCandidate;
+  prompt: string;
+  action: string;
+  words: string;
+};
+
+type SelectedVideo = {
+  shotId: string;
+  video: VideoCandidate;
+  words: string;
+  action: string;
+};
+
+type FinalVideo = {
+  videoUrl: string;
+  videoTitle: string;
+  videoRelease: string;
+  hashtags: string[];
+  selectedVideos: SelectedVideo[];
+};
+
+type TaskDetail = {
+  taskId: string;
+  status: string;
+  stage: TaskStage;
+  progress: number;
+  videoConfig?: VideoConfig;
+  shots: Shot[];
+  imageGroups: ShotImageGroup[];
+  scoredImageGroups: ShotImageGroup[];
+  selectedImages: SelectedImage[];
+  videoGroups: ShotVideoGroup[];
+  scoredVideoGroups: ShotVideoGroup[];
+  selectedVideos: SelectedVideo[];
+  finalVideo?: FinalVideo;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type TaskSummary = {
+  taskId: string;
+  status: string;
+  currentStep: TaskStage;
+  productName: string;
+  updatedAt: string;
+};
+
+type ApiResponse<T> = {
+  code: number;
+  message: string;
+  data: T;
+};
+
+type ScoreDraftAsset = {
+  assetId: string;
+  id: number;
+  score?: number;
+  reason?: string;
+  selected?: boolean;
+};
+
+type ImageScoreDraftGroup = {
+  shotId: string;
+  prompt: string;
+  action: string;
+  words: string;
+  images: ScoreDraftAsset[];
+};
+
+type VideoScoreDraftGroup = {
+  shotId: string;
+  prompt: string;
+  action: string;
+  words: string;
+  videos: ScoreDraftAsset[];
+};
+
+type FormState = {
+  inputType: "product_image";
+  text: string;
+  imageUrls: string;
+  videoType: string;
+  platform: string;
+  duration: string;
+  aspectRatio: string;
+  style: string;
+  generateImageCount: string;
+  generateVideoCount: string;
+};
+
+type WorkflowViewProps = {
+  task: TaskDetail;
+  busy: boolean;
+  message: string;
+  selectedImages: Record<string, string>;
+  selectedVideos: Record<string, string>;
+  editableShots: Shot[];
+  imageScoresJson: string;
+  videoScoresJson: string;
+  regenerateStage: TaskStage;
+  regenerateReason: string;
+  setSelectedImages: (value: Record<string, string>) => void;
+  setSelectedVideos: (value: Record<string, string>) => void;
+  setEditableShots: (value: Shot[]) => void;
+  setImageScoresJson: (value: string) => void;
+  setVideoScoresJson: (value: string) => void;
+  setRegenerateStage: (value: TaskStage) => void;
+  setRegenerateReason: (value: string) => void;
+  onAdvance: () => void;
+  onSaveEdits: () => void;
+  onSaveSelections: () => void;
+  onRegenerate: () => void;
+};
+
+type StageViewProps = WorkflowViewProps & {
+  viewStage: TaskStage;
+  readOnly: boolean;
+};
+
+const initialForm: FormState = {
+  inputType: "product_image",
+  text: "参考上传的商品图片，生成一条 15 秒带货广告视频。商品：玻璃水。卖点：去虫胶、无甲醇、去油膜。",
+  imageUrls: "",
+  videoType: "产品展示",
+  platform: "mobile",
+  duration: "15",
+  aspectRatio: "9:16",
+  style: "赛博朋克",
+  generateImageCount: "4",
+  generateVideoCount: "2"
+};
+
+const stages: Array<{ stage: TaskStage; label: string; icon: React.ReactNode }> = [
+  { stage: "CREATED", label: "创建", icon: <Check size={16} /> },
+  { stage: "MARKET_PLANNING", label: "营销策划", icon: <Sparkles size={16} /> },
+  { stage: "SHOT_SCRIPT_GENERATING", label: "分镜脚本", icon: <FileText size={16} /> },
+  { stage: "IMAGE_GENERATING", label: "图片生成与评估", icon: <ImageIcon size={16} /> },
+  { stage: "VIDEO_GENERATING", label: "视频生成与评估", icon: <Video size={16} /> },
+  { stage: "FINAL_COMPOSING", label: "最终合成", icon: <Archive size={16} /> },
+  { stage: "COMPLETED", label: "完成", icon: <CheckCircle2 size={16} /> }
+];
+
+function App() {
+  const [form, setForm] = useState<FormState>(initialForm);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [taskId, setTaskId] = useState("");
+  const [task, setTask] = useState<TaskDetail | null>(null);
+  const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [regenerateStage, setRegenerateStage] = useState<TaskStage>("SHOT_SCRIPT_GENERATING");
+  const [regenerateReason, setRegenerateReason] = useState("");
+  const [selectedImages, setSelectedImages] = useState<Record<string, string>>({});
+  const [selectedVideos, setSelectedVideos] = useState<Record<string, string>>({});
+  const [editableShots, setEditableShots] = useState<Shot[]>([]);
+  const [imageScoresJson, setImageScoresJson] = useState("");
+  const [videoScoresJson, setVideoScoresJson] = useState("");
+
+  useEffect(() => {
+    void loadTasks();
+  }, []);
+
+  useEffect(() => {
+    if (!taskId) return;
+    void loadTask(taskId);
+  }, [taskId]);
+
+  useEffect(() => {
+    if (!taskId || task?.status !== "RUNNING") return;
+    const timer = window.setInterval(() => void loadTask(taskId), 2500);
+    return () => window.clearInterval(timer);
+  }, [taskId, task?.status]);
+
+  async function loadTasks() {
+    const response = await fetch(`${API_BASE}/api/video-tasks`);
+    if (!response.ok) return;
+    const body = (await response.json()) as ApiResponse<TaskSummary[]>;
+    if (body.code === 0) setTasks(body.data ?? []);
+  }
+
+  async function loadTask(id: string) {
+    const detail = await fetchTaskDetail(id);
+    if (detail) applyTaskDetail(detail);
+  }
+
+  async function fetchTaskDetail(id: string) {
+    const response = await fetch(`${API_BASE}/api/video-tasks/${id}`);
+    if (!response.ok) return null;
+    const body = (await response.json()) as ApiResponse<TaskDetail>;
+    return body.code === 0 ? body.data : null;
+  }
+
+  function applyTaskDetail(detail: TaskDetail) {
+    const nextSelectedImages = Object.fromEntries((detail.selectedImages ?? []).map((item) => [item.shotId, item.image.assetId]));
+    const nextSelectedVideos = Object.fromEntries((detail.selectedVideos ?? []).map((item) => [item.shotId, item.video.assetId]));
+    setTask(detail);
+    setSelectedImages(nextSelectedImages);
+    setSelectedVideos(nextSelectedVideos);
+    setEditableShots(detail.shots ?? []);
+    setImageScoresJson(JSON.stringify(toImageScoreDraft(detail.scoredImageGroups ?? [], nextSelectedImages), null, 2));
+    setVideoScoresJson(JSON.stringify(toVideoScoreDraft(detail.scoredVideoGroups ?? [], nextSelectedVideos), null, 2));
+  }
+
+  async function createTask(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      const imageUrls = await prepareImageUrls();
+      if (imageUrls.length === 0) {
+        throw new Error("请上传本地产品图片，或输入至少一个图片链接");
+      }
+      const response = await fetch(`${API_BASE}/api/video-tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inputType: "product_image",
+          text: form.text,
+          productUrl: null,
+          imageUrls,
+          videoType: form.videoType,
+          platform: form.platform,
+          duration: Number(form.duration || 15),
+          aspectRatio: form.aspectRatio,
+          style: form.style,
+          generateImageCount: Number(form.generateImageCount || 4),
+          generateVideoCount: Number(form.generateVideoCount || 2)
+        })
+      });
+      const body = (await response.json()) as ApiResponse<{ taskId: string }>;
+      if (!response.ok || body.code !== 0) throw new Error(body.message || response.statusText);
+      setTaskId(body.data.taskId);
+      setMessage("任务已创建");
+      await loadTasks();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "创建失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function prepareImageUrls() {
+    const manual = form.imageUrls.split("\n").map((item) => item.trim()).filter(Boolean);
+    if (!imageFile) return manual;
+    return [await fileToDataUrl(imageFile), ...manual];
+  }
+
+  async function postAction(path: string, successMessage: string, body?: unknown, options?: { waitForChange?: boolean }) {
+    if (!taskId) return;
+    const previousTask = task;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const payload = (await response.json()) as ApiResponse<unknown>;
+      if (!response.ok || payload.code !== 0) throw new Error(payload.message || response.statusText);
+      setMessage(successMessage);
+      if (options?.waitForChange && previousTask) {
+        await waitForTaskChange(previousTask);
+      } else {
+        await loadTask(taskId);
+      }
+      await loadTasks();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "操作失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function advance() {
+    if (!task) return;
+    const path = task.stage === "CREATED" ? "start" : "advance";
+    await postAction(`/api/video-tasks/${task.taskId}/${path}`, "已进入下一步", undefined, { waitForChange: true });
+  }
+
+  async function saveCurrentEdits() {
+    if (!task) return;
+    const payload: Partial<Pick<TaskDetail, "shots" | "scoredImageGroups" | "scoredVideoGroups">> = {};
+    try {
+      if (task.stage === "SHOT_SCRIPT_GENERATING") payload.shots = editableShots;
+      if (isImageReviewStage(task.stage)) {
+        payload.scoredImageGroups = applyImageScoreDraft(task.scoredImageGroups, JSON.parse(imageScoresJson) as ImageScoreDraftGroup[]);
+      }
+      if (isVideoReviewStage(task.stage)) {
+        payload.scoredVideoGroups = applyVideoScoreDraft(task.scoredVideoGroups, JSON.parse(videoScoresJson) as VideoScoreDraftGroup[]);
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? `JSON 格式错误：${error.message}` : "JSON 格式错误");
+      return;
+    }
+    if (Object.keys(payload).length === 0) return;
+    await postAction(`/api/video-tasks/${task.taskId}/context`, "更改已应用", payload);
+  }
+
+  async function saveSelections() {
+    if (!task) return;
+    await postAction(`/api/video-tasks/${task.taskId}/select-assets`, "选择已保存", {
+      selectedImages: Object.entries(selectedImages).map(([shotId, assetId]) => ({ shotId, assetId })),
+      selectedVideos: Object.entries(selectedVideos).map(([shotId, assetId]) => ({ shotId, assetId }))
+    });
+  }
+
+  async function regenerate() {
+    if (!task) return;
+    await postAction(`/api/video-tasks/${task.taskId}/regenerate`, "已重新生成", {
+      fromStage: regenerateStage,
+      reason: regenerateReason,
+      shotIds: []
+    }, { waitForChange: true });
+  }
+
+  async function waitForTaskChange(previousTask: TaskDetail) {
+    for (let attempt = 0; attempt < 18; attempt += 1) {
+      await delay(700);
+      const next = await fetchTaskDetail(previousTask.taskId);
+      if (!next) continue;
+      applyTaskDetail(next);
+      if (
+        next.stage !== previousTask.stage
+        || next.status !== previousTask.status
+        || next.updatedAt !== previousTask.updatedAt
+      ) {
+        return;
+      }
+    }
+    await loadTask(previousTask.taskId);
+  }
+
+  function chooseImages(value: Record<string, string>) {
+    setSelectedImages(value);
+    setImageScoresJson((previous) => markSelectedInScoreJson(previous, value, "images"));
+  }
+
+  function chooseVideos(value: Record<string, string>) {
+    setSelectedVideos(value);
+    setVideoScoresJson((previous) => markSelectedInScoreJson(previous, value, "videos"));
+  }
+
+  function resetToCreate() {
+    setTask(null);
+    setTaskId("");
+    setMessage("");
+  }
+
+  return (
+    <div className="app-shell">
+      <Topbar onNewTask={resetToCreate} />
+      <Sidebar tasks={tasks} activeTaskId={taskId} onSelectTask={setTaskId} />
+      <main className="workspace">
+        {!task && (
+          <CreateTaskView
+            form={form}
+            setForm={setForm}
+            imageFile={imageFile}
+            setImageFile={setImageFile}
+            busy={busy}
+            message={message}
+            onSubmit={createTask}
+          />
+        )}
+        {task && (
+          <WorkflowView
+            task={task}
+            busy={busy}
+            message={message}
+            selectedImages={selectedImages}
+            selectedVideos={selectedVideos}
+            editableShots={editableShots}
+            imageScoresJson={imageScoresJson}
+            videoScoresJson={videoScoresJson}
+            regenerateStage={regenerateStage}
+            regenerateReason={regenerateReason}
+            setSelectedImages={chooseImages}
+            setSelectedVideos={chooseVideos}
+            setEditableShots={setEditableShots}
+            setImageScoresJson={setImageScoresJson}
+            setVideoScoresJson={setVideoScoresJson}
+            setRegenerateStage={setRegenerateStage}
+            setRegenerateReason={setRegenerateReason}
+            onAdvance={advance}
+            onSaveEdits={saveCurrentEdits}
+            onSaveSelections={saveSelections}
+            onRegenerate={regenerate}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
+
+function Topbar({
+  onNewTask
+}: {
+  onNewTask: () => void;
+}) {
+  return (
+    <header className="topbar">
+      <h1>AIVision Control</h1>
+      <div className="top-actions">
+        <button className="primary" onClick={onNewTask}>
+          <Plus size={18} />
+          创建新任务
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function Sidebar({
+  tasks,
+  activeTaskId,
+  onSelectTask
+}: {
+  tasks: TaskSummary[];
+  activeTaskId: string;
+  onSelectTask: (taskId: string) => void;
+}) {
+  return (
+    <aside className="sidebar">
+      <section>
+        <h2>历史任务</h2>
+        <p>任务管理中心</p>
+      </section>
+      <div className="activity-title">活动历史</div>
+      <div className="history-list">
+        {tasks.map((item) => (
+          <button
+            key={item.taskId}
+            className={`history-card ${item.taskId === activeTaskId ? "active" : ""}`}
+            onClick={() => onSelectTask(item.taskId)}
+          >
+            <span>{shortId(item.taskId)}</span>
+            <b>{statusText(item.status)}</b>
+            <p>{summaryTitle(item.productName)}</p>
+          </button>
+        ))}
+        {tasks.length === 0 && <div className="empty">暂无任务</div>}
+      </div>
+    </aside>
+  );
+}
+
+function CreateTaskView({
+  form,
+  setForm,
+  imageFile,
+  setImageFile,
+  busy,
+  message,
+  onSubmit
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  imageFile: File | null;
+  setImageFile: (file: File | null) => void;
+  busy: boolean;
+  message: string;
+  onSubmit: (event: React.FormEvent) => void;
+}) {
+  return (
+    <form className="create-layout" onSubmit={onSubmit}>
+      <section className="hero-copy">
+        <h2>初始化生成</h2>
+        <p>上传本地商品图片，或粘贴图片链接，再定义电影级输出的风格轨迹。</p>
+      </section>
+      <section className="input-card">
+        <div className="source-title">
+          <ImageIcon size={20} />
+          <span>产品图片</span>
+        </div>
+        <label className="upload-zone">
+          <UploadCloud size={42} />
+          <strong>{imageFile ? imageFile.name : "拖拽产品图片至此"}</strong>
+          <span>支持 PNG, JPG 或 WEBP</span>
+          <input type="file" accept="image/*" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} />
+        </label>
+        <label>
+          图片链接
+          <textarea value={form.imageUrls} onChange={(event) => setFormValue("imageUrls", event.target.value, setForm)} placeholder="每行一个图片链接，例如 https://example.com/product.png" />
+        </label>
+        <label>
+          产品或需求描述
+          <textarea value={form.text} onChange={(event) => setFormValue("text", event.target.value, setForm)} placeholder="描述视觉美学、灯光、运动行为和核心信息..." />
+        </label>
+        <div className="metric-row">
+          <label>
+            候选图片数量
+            <input type="number" min={1} max={10} value={form.generateImageCount} onChange={(event) => setFormValue("generateImageCount", event.target.value, setForm)} />
+          </label>
+          <label>
+            候选视频数量
+            <input type="number" min={1} max={5} value={form.generateVideoCount} onChange={(event) => setFormValue("generateVideoCount", event.target.value, setForm)} />
+          </label>
+        </div>
+      </section>
+      <aside className="config-card">
+        <h3>生成配置</h3>
+        <label>
+          视频类型
+          <select value={form.videoType} onChange={(event) => setFormValue("videoType", event.target.value, setForm)}>
+            <option>产品展示</option>
+            <option>说明视频</option>
+          </select>
+        </label>
+        <div>
+          <span className="field-label">目标平台</span>
+          <div className="platforms">
+            <button type="button" className={form.platform === "mobile" ? "active" : ""} onClick={() => setFormValue("platform", "mobile", setForm)}><Smartphone size={22} /></button>
+            <button type="button" className={form.platform === "desktop" ? "active" : ""} onClick={() => setFormValue("platform", "desktop", setForm)}><Monitor size={22} /></button>
+            <button type="button" className={form.platform === "tv" ? "active" : ""} onClick={() => setFormValue("platform", "tv", setForm)}><Video size={22} /></button>
+          </div>
+        </div>
+        <div className="metric-row">
+          <label>
+            时长
+            <select value={form.duration} onChange={(event) => setFormValue("duration", event.target.value, setForm)}>
+              <option value="6">6秒</option>
+              <option value="15">15秒</option>
+              <option value="30">30秒</option>
+            </select>
+          </label>
+          <label>
+            比例
+            <select value={form.aspectRatio} onChange={(event) => setFormValue("aspectRatio", event.target.value, setForm)}>
+              <option>9:16</option>
+              <option>1:1</option>
+              <option>16:9</option>
+            </select>
+          </label>
+        </div>
+        <div>
+          <span className="field-label">视觉风格</span>
+          <div className="style-tags">
+            {["赛博朋克", "极简", "电影感", "黑色电影", "动漫风"].map((style) => (
+              <button type="button" key={style} className={form.style.includes(style) ? "active" : ""} onClick={() => setFormValue("style", style, setForm)}>
+                {style}
+              </button>
+            ))}
+          </div>
+        </div>
+        <textarea value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="输入自定义风格描述..." />
+        {message && <div className="message">{message}</div>}
+        <button className="primary big" disabled={busy}>
+          {busy ? <Loader2 className="spin" size={20} /> : <Sparkles size={22} />}
+          开始生成
+        </button>
+      </aside>
+    </form>
+  );
+}
+
+function WorkflowView(props: WorkflowViewProps) {
+  const { task } = props;
+  const [viewStage, setViewStage] = useState<TaskStage>(canonicalStage(task.stage));
+  const readOnly = canonicalStage(viewStage) !== canonicalStage(task.stage);
+
+  useEffect(() => {
+    setViewStage(canonicalStage(task.stage));
+  }, [task.taskId, task.stage]);
+
+  return (
+    <div className="workflow-page">
+      <section className="workflow-head">
+        <div>
+          <div className="headline-row">
+            <h2>{viewStage === "COMPLETED" ? finalTitle(task) : stageText(viewStage)}</h2>
+            <span className={`status ${task.status.toLowerCase()}`}>{statusText(task.status)}</span>
+          </div>
+          <p>任务 ID: <span>{task.taskId}</span> · 当前流程：{stageText(task.stage)} · 正在查看：{stageText(viewStage)}</p>
+        </div>
+      </section>
+      <StageStepper current={task.stage} viewing={viewStage} status={task.status} task={task} onSelect={setViewStage} />
+      {props.message && <div className="message">{props.message}</div>}
+      {readOnly && <div className="message">当前正在查看历史节点内容，编辑和保存操作只在当前流程节点开放。</div>}
+      <section className="stage-canvas">
+        <StageContent {...props} viewStage={viewStage} readOnly={readOnly} />
+      </section>
+      <footer className="bottom-bar">
+        <RegenerateControls {...props} />
+        <div className="bottom-actions">
+          <button onClick={props.onSaveEdits} disabled={props.busy || readOnly || !canEdit(task.stage)}>保存草稿</button>
+          <button className="primary" onClick={props.onAdvance} disabled={props.busy || task.status === "RUNNING" || task.status === "SUCCESS"}>
+            {props.busy ? <Loader2 className="spin" size={18} /> : <Rocket size={18} />}
+            {nextLabel(task.stage)}
+          </button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function StageStepper({
+  current,
+  viewing,
+  status,
+  task,
+  onSelect
+}: {
+  current: TaskStage;
+  viewing: TaskStage;
+  status: string;
+  task: TaskDetail;
+  onSelect: (stage: TaskStage) => void;
+}) {
+  return (
+    <div className="stage-stepper">
+      {stages.map((item) => {
+        const active = item.stage === canonicalStage(current);
+        const viewingStage = item.stage === canonicalStage(viewing);
+        const done = stageIndex(item.stage) < stageIndex(current) || current === "COMPLETED";
+        const available = isStageAvailable(task, item.stage);
+        return (
+          <button
+            type="button"
+            className={`stage-dot ${active ? "active" : ""} ${viewingStage ? "viewing" : ""} ${done ? "done" : ""}`}
+            key={item.stage}
+            disabled={!available}
+            onClick={() => onSelect(item.stage)}
+          >
+            <span>{done ? <Check size={18} /> : item.icon}</span>
+            {active && status === "WAITING_REVIEW" && <b>WAITING_REVIEW</b>}
+            <small>{item.label}</small>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function StageContent(props: StageViewProps) {
+  const { task, viewStage } = props;
+  if (!isStageAvailable(task, viewStage)) return <div className="empty-state">该节点还没有生成内容。</div>;
+  if (viewStage === "MARKET_PLANNING") return <MarketingStage task={task} />;
+  if (viewStage === "SHOT_SCRIPT_GENERATING") return <ShotStage {...props} />;
+  if (isImageReviewStage(viewStage)) return hasScoredImages(task) ? <ImageEvaluateStage {...props} /> : <ImageGenerateStage {...props} />;
+  if (isVideoReviewStage(viewStage)) return hasScoredVideos(task) ? <VideoEvaluateStage {...props} /> : <VideoGenerateStage {...props} />;
+  if (viewStage === "FINAL_COMPOSING" || viewStage === "COMPLETED") return <FinalStage task={task} />;
+  return <div className="empty-state">任务已创建，点击进入下一步开始营销策划。</div>;
+}
+
+function MarketingStage({ task }: { task: TaskDetail }) {
+  const config = task.videoConfig;
+  if (!config) return <div className="empty-state">等待生成营销策划。</div>;
+  return (
+    <div className="two-pane">
+      <section className="panel-card">
+        <h3>AI 生成营销策划方案</h3>
+        <label>任务标题<input readOnly value={`${config.productInfo?.name ?? "产品"} 营销策划`} /></label>
+        <label>目标人群<textarea readOnly value={config.targetAudience ?? ""} /></label>
+        <label>核心卖点<textarea readOnly value={config.productInfo?.sellingPoint ?? ""} /></label>
+      </section>
+      <aside className="panel-card">
+        <h3>配置摘要</h3>
+        <div className="summary-list">
+          <span>视频类型<b>{config.videoType}</b></span>
+          <span>目标平台<b>{config.platform}</b></span>
+          <span>视频比例<b>{config.aspectRatio}</b></span>
+          <span>视频时长<b>{config.duration}s</b></span>
+          <span>参考素材<b>{resourceSummary(config.productInfo?.resources)}</b></span>
+        </div>
+        <label>创意策略<textarea readOnly value={config.videoAdvice ?? ""} /></label>
+      </aside>
+    </div>
+  );
+}
+
+function ShotStage({ task, editableShots, setEditableShots, readOnly }: StageViewProps) {
+  function updateShot(shotId: string, key: "prompt" | "action" | "words", value: string) {
+    if (readOnly) return;
+    setEditableShots(editableShots.map((shot) => shot.shotId === shotId ? { ...shot, [key]: value } : shot));
+  }
+  return (
+    <div className="two-pane">
+      <section className="panel-card">
+        <div className="section-head"><h3>分镜序列</h3><span>{editableShots.length} 个分镜</span></div>
+        <div className="shot-list">
+          {editableShots.map((shot) => (
+            <article className="shot-card" key={shot.shotId}>
+              <header><b>{shot.shotId}</b><span>时长: {shot.duration}s</span></header>
+              <label>视觉提示词<textarea readOnly={readOnly} value={shot.prompt ?? ""} onChange={(event) => updateShot(shot.shotId, "prompt", event.target.value)} /></label>
+              <label>动作 / 移动<input readOnly={readOnly} value={shot.action ?? ""} onChange={(event) => updateShot(shot.shotId, "action", event.target.value)} /></label>
+              <label>对白 / 旁白<textarea readOnly={readOnly} value={shot.words ?? ""} onChange={(event) => updateShot(shot.shotId, "words", event.target.value)} /></label>
+            </article>
+          ))}
+        </div>
+      </section>
+      <aside className="panel-card">
+        <h3>编辑范围</h3>
+        <div className="summary-list">
+          <span>当前流程<b>{stageText(task.stage)}</b></span>
+          <span>任务状态<b>{statusText(task.status)}</b></span>
+          <span>{readOnly ? "查看模式" : "可编辑字段"}<b>{readOnly ? "历史节点只读" : "prompt / action / words"}</b></span>
+        </div>
+        <p className="hint">保存后会保留分镜 ID、顺序、时长和参考素材，只用修改后的提示词重新生成后续图片和视频。</p>
+      </aside>
+    </div>
+  );
+}
+
+function ImageGenerateStage({ task, selectedImages, setSelectedImages, onSaveSelections, readOnly }: StageViewProps) {
+  return (
+    <div className="panel-card">
+      <div className="section-head"><h3>生成图片候选</h3><span>{task.imageGroups.length} 组分镜</span></div>
+      <MediaGrid groups={task.imageGroups} selected={selectedImages} onSelect={setSelectedImages} type="image" readOnly={readOnly} />
+      <button className="secondary" onClick={onSaveSelections} disabled={readOnly}>保存选择</button>
+    </div>
+  );
+}
+
+function ImageEvaluateStage({ task, selectedImages, setSelectedImages, imageScoresJson, setImageScoresJson, onSaveSelections, onSaveEdits, readOnly }: StageViewProps) {
+  return (
+    <div className="review-layout">
+      <section className="panel-card">
+        <div className="section-head"><h3>选定分镜图片 (Shot List)</h3><span>共 {task.scoredImageGroups.reduce((sum, group) => sum + group.images.length, 0)} 张图片已生成</span></div>
+        <MediaGrid groups={task.scoredImageGroups} selected={selectedImages} onSelect={setSelectedImages} type="image" readOnly={readOnly} />
+      </section>
+      <aside className="panel-card review-panel">
+        <h3>评分数据编辑</h3>
+        <p className="hint">这里只保留评分、原因和选中状态，图片 URL 与上传图片 Base64 已隐藏。</p>
+        <textarea readOnly={readOnly} value={imageScoresJson} onChange={(event) => setImageScoresJson(event.target.value)} />
+        <div className="split-actions">
+          <button onClick={onSaveSelections} disabled={readOnly}>保存选择</button>
+          <button className="secondary" onClick={onSaveEdits} disabled={readOnly}>应用更改</button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function VideoGenerateStage({ task, selectedVideos, setSelectedVideos, onSaveSelections, readOnly }: StageViewProps) {
+  return (
+    <div className="panel-card">
+      <div className="section-head"><h3>分镜视频候选</h3><span>{task.videoGroups.length} 组分镜</span></div>
+      <MediaGrid groups={task.videoGroups} selected={selectedVideos} onSelect={setSelectedVideos} type="video" readOnly={readOnly} />
+      <button className="secondary" onClick={onSaveSelections} disabled={readOnly}>保存选择</button>
+    </div>
+  );
+}
+
+function VideoEvaluateStage({ task, selectedVideos, setSelectedVideos, videoScoresJson, setVideoScoresJson, onSaveSelections, onSaveEdits, readOnly }: StageViewProps) {
+  return (
+    <div className="review-layout">
+      <section className="panel-card">
+        <div className="section-head"><h3>视频候选评审</h3><span>{task.scoredVideoGroups.length} 组分镜</span></div>
+        <MediaGrid groups={task.scoredVideoGroups} selected={selectedVideos} onSelect={setSelectedVideos} type="video" readOnly={readOnly} />
+      </section>
+      <aside className="panel-card review-panel">
+        <h3>评分数据编辑</h3>
+        <p className="hint">这里只保留评分、原因和选中状态，视频 URL 已隐藏。</p>
+        <textarea readOnly={readOnly} value={videoScoresJson} onChange={(event) => setVideoScoresJson(event.target.value)} />
+        <div className="split-actions">
+          <button onClick={onSaveSelections} disabled={readOnly}>保存选择</button>
+          <button className="secondary" onClick={onSaveEdits} disabled={readOnly}>应用更改</button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function FinalStage({ task }: { task: TaskDetail }) {
+  return (
+    <div className="final-layout">
+      <section>
+        <div className="final-title">
+          <span><CheckCircle2 size={16} />生成完成</span>
+          <h2>{finalTitle(task)}</h2>
+          <p>任务 ID: {task.taskId} · 时长: {task.videoConfig?.duration ?? "-"}s</p>
+        </div>
+        {task.finalVideo?.videoUrl ? (
+          <video className="final-video" src={task.finalVideo.videoUrl} controls />
+        ) : (
+          <div className="final-video placeholder"><PlayIcon /></div>
+        )}
+      </section>
+      <aside className="result-stack">
+        <section className="panel-card">
+          <h3>发布文案 <Copy size={18} /></h3>
+          <blockquote>{task.finalVideo?.videoRelease ?? "等待生成发布文案"}</blockquote>
+          <div className="style-tags">{(task.finalVideo?.hashtags ?? []).map((tag) => <span key={tag}>{tag}</span>)}</div>
+        </section>
+        <section className="panel-card">
+          <h3>分享链接</h3>
+          <div className="copy-line">
+            <input readOnly value={task.finalVideo?.videoUrl ?? ""} />
+            <button onClick={() => navigator.clipboard.writeText(task.finalVideo?.videoUrl ?? "")}><Copy size={20} /></button>
+          </div>
+          <button className="primary"><Download size={18} />下载高清视频</button>
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function MediaGrid({
+  groups,
+  selected,
+  onSelect,
+  type,
+  readOnly = false
+}: {
+  groups: Array<ShotImageGroup | ShotVideoGroup>;
+  selected: Record<string, string>;
+  onSelect: (value: Record<string, string>) => void;
+  type: "image" | "video";
+  readOnly?: boolean;
+}) {
+  return (
+    <div className="media-grid">
+      {groups.flatMap((group) => {
+        const assets = "images" in group ? group.images : group.videos;
+        return assets.map((asset) => (
+          <button
+            type="button"
+            className={`media-card ${selected[group.shotId] === asset.assetId ? "selected" : ""}`}
+            key={asset.assetId}
+            onClick={() => {
+              if (!readOnly) onSelect({ ...selected, [group.shotId]: asset.assetId });
+            }}
+          >
+            {type === "image" && isRenderableImage(asset.url) ? <img src={asset.url} alt={asset.assetId} /> : null}
+            {type === "video" && isRenderableVideo(asset.url) ? <video src={asset.url} controls /> : null}
+            {type === "image" && !isRenderableImage(asset.url) && <div className="mock-media">{asset.url}</div>}
+            {type === "video" && !isRenderableVideo(asset.url) && <div className="mock-media">{asset.url}</div>}
+            <span>{group.shotId} · {asset.score ?? "-"} 分</span>
+            <small>{asset.reason}</small>
+            {selected[group.shotId] === asset.assetId && (
+              <>
+                <b className="checkmark"><Check size={18} /></b>
+                <em className="selected-label">已选择</em>
+              </>
+            )}
+          </button>
+        ));
+      })}
+    </div>
+  );
+}
+
+function RegenerateControls({
+  regenerateStage,
+  regenerateReason,
+  setRegenerateStage,
+  setRegenerateReason,
+  onRegenerate,
+  busy
+}: WorkflowViewProps) {
+  return (
+    <div className="regen">
+      <span>重燃阶段:</span>
+      <select value={regenerateStage} onChange={(event) => setRegenerateStage(event.target.value as TaskStage)}>
+        <option value="MARKET_PLANNING">营销策划</option>
+        <option value="SHOT_SCRIPT_GENERATING">分镜脚本</option>
+        <option value="IMAGE_GENERATING">图片生成与评估</option>
+        <option value="VIDEO_GENERATING">视频生成与评估</option>
+        <option value="FINAL_COMPOSING">最终合成</option>
+      </select>
+      <input value={regenerateReason} onChange={(event) => setRegenerateReason(event.target.value)} placeholder="重燃原因..." />
+      <button onClick={onRegenerate} disabled={busy}>应用</button>
+    </div>
+  );
+}
+
+function setFormValue(key: keyof FormState, value: string, setForm: React.Dispatch<React.SetStateAction<FormState>>) {
+  setForm((previous) => ({ ...previous, [key]: value }));
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function toImageScoreDraft(groups: ShotImageGroup[], selected: Record<string, string>): ImageScoreDraftGroup[] {
+  return groups.map((group) => ({
+    shotId: group.shotId,
+    prompt: group.prompt,
+    action: group.action,
+    words: group.words,
+    images: group.images.map((image) => ({
+      assetId: image.assetId,
+      id: image.id,
+      score: normalizeScore(image.score),
+      reason: image.reason,
+      selected: selected[group.shotId] === image.assetId || image.selected
+    }))
+  }));
+}
+
+function toVideoScoreDraft(groups: ShotVideoGroup[], selected: Record<string, string>): VideoScoreDraftGroup[] {
+  return groups.map((group) => ({
+    shotId: group.shotId,
+    prompt: group.prompt,
+    action: group.action,
+    words: group.words,
+    videos: group.videos.map((video) => ({
+      assetId: video.assetId,
+      id: video.id,
+      score: normalizeScore(video.score),
+      reason: video.reason,
+      selected: selected[group.shotId] === video.assetId || video.selected
+    }))
+  }));
+}
+
+function applyImageScoreDraft(groups: ShotImageGroup[], drafts: ImageScoreDraftGroup[]): ShotImageGroup[] {
+  return groups.map((group) => {
+    const draft = drafts.find((item) => item.shotId === group.shotId);
+    if (!draft) return group;
+    return {
+      ...group,
+      prompt: draft.prompt ?? group.prompt,
+      action: draft.action ?? group.action,
+      words: draft.words ?? group.words,
+      images: group.images.map((image) => {
+        const edited = draft.images?.find((item) => item.assetId === image.assetId);
+        return edited ? { ...image, score: edited.score, reason: edited.reason, selected: edited.selected ?? false } : image;
+      })
+    };
+  });
+}
+
+function applyVideoScoreDraft(groups: ShotVideoGroup[], drafts: VideoScoreDraftGroup[]): ShotVideoGroup[] {
+  return groups.map((group) => {
+    const draft = drafts.find((item) => item.shotId === group.shotId);
+    if (!draft) return group;
+    return {
+      ...group,
+      prompt: draft.prompt ?? group.prompt,
+      action: draft.action ?? group.action,
+      words: draft.words ?? group.words,
+      videos: group.videos.map((video) => {
+        const edited = draft.videos?.find((item) => item.assetId === video.assetId);
+        return edited ? { ...video, score: edited.score, reason: edited.reason, selected: edited.selected ?? false } : video;
+      })
+    };
+  });
+}
+
+function markSelectedInScoreJson(previous: string, selected: Record<string, string>, key: "images" | "videos") {
+  try {
+    const groups = JSON.parse(previous) as Array<Record<string, unknown>>;
+    return JSON.stringify(groups.map((group) => {
+      const shotId = String(group.shotId ?? "");
+      const assets = Array.isArray(group[key]) ? group[key] as ScoreDraftAsset[] : [];
+      return {
+        ...group,
+        [key]: assets.map((asset) => ({
+          ...asset,
+          selected: selected[shotId] === asset.assetId
+        }))
+      };
+    }), null, 2);
+  } catch {
+    return previous;
+  }
+}
+
+function normalizeScore(value: unknown) {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function isRenderableImage(url?: string) {
+  return Boolean(url && (url.startsWith("http") || url.startsWith("/") || url.startsWith("data:image/")));
+}
+
+function isRenderableVideo(url?: string) {
+  return Boolean(url && (url.startsWith("http") || url.startsWith("/") || url.startsWith("data:video/")));
+}
+
+function stageIndex(stage: TaskStage) {
+  return stages.findIndex((item) => item.stage === canonicalStage(stage));
+}
+
+function isStageAvailable(task: TaskDetail, stage: TaskStage) {
+  const target = canonicalStage(stage);
+  if (stage === "CREATED") return true;
+  if (target === canonicalStage(task.stage)) return true;
+  if (target === "MARKET_PLANNING") return Boolean(task.videoConfig);
+  if (target === "SHOT_SCRIPT_GENERATING") return (task.shots ?? []).length > 0;
+  if (target === "IMAGE_GENERATING") return (task.imageGroups ?? []).length > 0 || hasScoredImages(task);
+  if (target === "VIDEO_GENERATING") return (task.videoGroups ?? []).length > 0 || hasScoredVideos(task);
+  if (target === "FINAL_COMPOSING") return Boolean(task.finalVideo) || task.stage === "COMPLETED";
+  if (target === "COMPLETED") return Boolean(task.finalVideo);
+  return false;
+}
+
+function canEdit(stage: TaskStage) {
+  return stage === "SHOT_SCRIPT_GENERATING" || isImageReviewStage(stage) || isVideoReviewStage(stage);
+}
+
+function nextLabel(stage: TaskStage) {
+  if (stage === "CREATED") return "开始生成";
+  if (stage === "COMPLETED") return "已完成";
+  const index = stageIndex(stage);
+  const next = stages[index + 1];
+  return next ? `进入下一步：${next.label}` : "进入下一步";
+}
+
+function summaryTitle(value: string) {
+  if (!value) return "未命名任务";
+  return value.length > 18 ? `${value.slice(0, 18)}...` : value;
+}
+
+function shortId(value: string) {
+  return value ? `#${value.slice(-8)}` : "#TASK";
+}
+
+function statusText(value: string) {
+  const map: Record<string, string> = {
+    CREATED: "待开始",
+    RUNNING: "进行中",
+    WAITING_REVIEW: "待审核",
+    SUCCESS: "已完成",
+    FAILED: "失败"
+  };
+  return map[value] ?? value;
+}
+
+function stageText(value: TaskStage) {
+  const found = stages.find((item) => item.stage === canonicalStage(value));
+  return found?.label ?? value;
+}
+
+function canonicalStage(stage: TaskStage) {
+  if (stage === "IMAGE_EVALUATING" || stage === "IMAGE_SELECTING") return "IMAGE_GENERATING";
+  if (stage === "VIDEO_EVALUATING" || stage === "VIDEO_SELECTING") return "VIDEO_GENERATING";
+  return stage;
+}
+
+function isImageReviewStage(stage: TaskStage) {
+  return canonicalStage(stage) === "IMAGE_GENERATING";
+}
+
+function isVideoReviewStage(stage: TaskStage) {
+  return canonicalStage(stage) === "VIDEO_GENERATING";
+}
+
+function hasScoredImages(task: TaskDetail) {
+  return (task.scoredImageGroups ?? []).length > 0;
+}
+
+function hasScoredVideos(task: TaskDetail) {
+  return (task.scoredVideoGroups ?? []).length > 0;
+}
+
+function finalTitle(task: TaskDetail) {
+  return task.finalVideo?.videoTitle || task.videoConfig?.productInfo?.name || "生成结果";
+}
+
+function resourceSummary(resources?: string[]) {
+  if (!resources || resources.length === 0) return "未提供";
+  const hidden = resources.filter((item) => item.startsWith("data:image/")).length;
+  const visible = resources.length - hidden;
+  if (hidden > 0 && visible > 0) return `${visible} 个链接，${hidden} 张上传图片已隐藏`;
+  if (hidden > 0) return `${hidden} 张上传图片已隐藏`;
+  return `${visible} 个链接`;
+}
+
+function PlayIcon() {
+  return <span className="play-icon">▶</span>;
+}
+
+createRoot(document.getElementById("root")!).render(<App />);

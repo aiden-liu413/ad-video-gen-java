@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
 import java.util.Map;
@@ -49,8 +50,12 @@ public class ArkChatClient {
                 log.info("LLM chat completion succeeded, model={}", modelName());
                 return response.choices().get(0).message().content();
             }
+        } catch (RestClientResponseException ex) {
+            log.error("LLM chat completion API failed, model={}, statusCode={}, responseBody={}",
+                    modelName(), ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+            return "LLM 调用失败，已使用本地兜底结果。错误：" + ex.getMessage();
         } catch (RuntimeException ex) {
-            log.warn("LLM chat completion failed, use local fallback, model={}, error={}", modelName(), ex.getMessage());
+            log.error("LLM chat completion failed, use local fallback, model={}", modelName(), ex);
             return "LLM 调用失败，已使用本地兜底结果。错误：" + ex.getMessage();
         }
         log.warn("LLM chat completion returned empty response, use local fallback, model={}", modelName());

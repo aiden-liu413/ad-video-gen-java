@@ -4,12 +4,8 @@ server:
 spring:
   application:
     name: ad-video-gen-java
-  servlet:
-    multipart:
-      max-file-size: 20MB
-      max-request-size: 25MB
   datasource:
-    url: jdbc:h2:file:./data/ad-video-gen;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:file:./data/ad-video-gen;MODE=MySQL;AUTO_SERVER=TRUE
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -45,5 +41,6 @@ ad-video:
     enabled: ${VIDEO_GENERATION_ENABLED:false}
   short-link:
     public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
-  upload:
-    storage-dir: ${UPLOAD_STORAGE_DIR:./data/uploads}
+  ffmpeg:
+    binary: ${FFMPEG_BINARY:ffmpeg}
+    output-dir: ${FFMPEG_OUTPUT_DIR:./data/final-videos}

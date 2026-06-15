@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,12 +52,22 @@ public class SeedanceVideoClient {
         );
         log.info("Seedance video generation start, model={}, productName={}, imageCount={}, duration={}, scriptChars={}",
                 modelName(), productName, imageUrls.size(), durationSeconds, script == null ? 0 : script.length());
-        VideoTaskResponse response = restClient.post()
-                .uri("/contents/generations/tasks")
-                .header("Authorization", "Bearer " + properties.video().apiKey())
-                .body(payload)
-                .retrieve()
-                .body(VideoTaskResponse.class);
+        VideoTaskResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/contents/generations/tasks")
+                    .header("Authorization", "Bearer " + properties.video().apiKey())
+                    .body(payload)
+                    .retrieve()
+                    .body(VideoTaskResponse.class);
+        } catch (RestClientResponseException ex) {
+            log.error("Seedance video generation API failed, model={}, productName={}, statusCode={}, responseBody={}",
+                    modelName(), productName, ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("Seedance video generation API failed, model={}, productName={}", modelName(), productName, ex);
+            throw ex;
+        }
         if (response == null || !StringUtils.hasText(response.id())) {
             log.warn("Seedance video generation returned empty response, model={}", modelName());
             return new VideoGeneration("", "");
@@ -90,11 +101,20 @@ public class SeedanceVideoClient {
     }
 
     private VideoTaskResponse queryTask(String taskId) {
-        return restClient.get()
-                .uri("/contents/generations/tasks/{id}", taskId)
-                .header("Authorization", "Bearer " + properties.video().apiKey())
-                .retrieve()
-                .body(VideoTaskResponse.class);
+        try {
+            return restClient.get()
+                    .uri("/contents/generations/tasks/{id}", taskId)
+                    .header("Authorization", "Bearer " + properties.video().apiKey())
+                    .retrieve()
+                    .body(VideoTaskResponse.class);
+        } catch (RestClientResponseException ex) {
+            log.error("Seedance video task query API failed, model={}, seedanceTaskId={}, statusCode={}, responseBody={}",
+                    modelName(), taskId, ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("Seedance video task query API failed, model={}, seedanceTaskId={}", modelName(), taskId, ex);
+            throw ex;
+        }
     }
 
     private void sleepBeforeNextQuery(String taskId) {

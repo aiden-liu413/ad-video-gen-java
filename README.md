@@ -12,7 +12,10 @@ Java/Spring Boot 版本的广告视频生成 Demo，按 `volcengine/ai-app-lab/d
 - 评估 Agent：输出评分、优势、风险和优化建议
 - Multimedia Agent：先调用 Seedream 生成分镜图，再调用 Seedance 生成视频
 - Release Agent：生成发布文案、话题标签和短链
-- 异步任务接口：提交任务后轮询查询结果
+- 文档版任务状态机：`video_task` + `video_task_context` 持久化保存任务状态和上下文
+- 候选素材机制：每个分镜可生成多张候选图、多段候选视频，并支持人工选择
+- 本地 FFmpeg 合成：最终视频落盘到 `./data/final-videos`，通过 `/final-videos/**` 访问，不使用 TOS 存储
+- 前端工作台：创建任务、启动任务、查看阶段产物、人工选择素材、从指定阶段重新生成
 
 ## Prompt 对齐
 
@@ -48,73 +51,156 @@ export T2V_ENDPOINT_ID=你的Seedance接入点ID
 export VIDEO_GENERATION_ENABLED=true
 
 export PUBLIC_BASE_URL=http://localhost:8080
+export FFMPEG_BINARY=ffmpeg
+export FFMPEG_OUTPUT_DIR=./data/final-videos
 ```
 
 未配置 `ARK_API_KEY` 或未开启 `IMAGE_GENERATION_ENABLED` / `VIDEO_GENERATION_ENABLED` 时，服务会使用本地兜底内容，方便先跑通整体流程。
 
-## API
+最终合成阶段会调用本机 FFmpeg。请确保 `ffmpeg` 在 `PATH` 中，或通过 `FFMPEG_BINARY` 指定可执行文件路径。
 
-提交生成任务：
+## 前端工作台
 
-方式一：商品链接生成
+前端位于 `frontend` 目录，默认代理后端 `http://localhost:8080`。
 
 ```bash
-curl -X POST http://localhost:8080/api/ad-videos \
+cd frontend
+npm install
+npm run dev
+```
+
+打开：
+
+```text
+http://localhost:8002/
+```
+
+工作台按设计文档中的状态机推进：
+
+```text
+CREATED
+-> MARKET_PLANNING
+-> SHOT_SCRIPT_GENERATING
+-> IMAGE_GENERATING
+-> IMAGE_EVALUATING
+-> VIDEO_GENERATING
+-> VIDEO_EVALUATING
+-> FINAL_COMPOSING
+-> COMPLETED
+```
+
+用户可以在前端查看历史任务，并继续编辑历史任务。流程不会自动执行到下一步：每次点击“开始生成 / 进入下一步”只推进一个阶段，阶段产物生成后进入 `WAITING_REVIEW`，用户确认或编辑后再手动进入下一步。分镜脚本、图片评分、视频评分都支持 JSON 编辑保存；保存后会清空受影响的后续产物，避免后续素材和用户编辑不一致。
+
+## API
+
+### 文档版任务接口
+
+创建任务：
+
+```bash
+curl -X POST http://localhost:8080/api/video-tasks \
   -H 'Content-Type: application/json' \
   -d '{
-    "prompt": "参考商品页面，生成一条 15 秒带货广告视频",
-    "productName": "智能咖啡杯",
-    "productDescription": "可自动控温并记录饮水习惯的随行杯",
-    "productUrl": "https://example.com/products/cup",
-    "targetAudience": "通勤白领、咖啡爱好者",
-    "sellingPoints": "恒温、长续航、App记录",
+    "inputType": "product_image",
+    "text": "参考商品图片，生成一条 15 秒带货广告视频。商品：玻璃水。卖点：去虫胶、无甲醇、去油膜。",
+    "imageUrls": [
+      "data:image/jpeg;base64,..."
+    ],
+    "videoType": "商品展示视频",
+    "platform": "抖音",
+    "duration": 15,
+    "aspectRatio": "9:16",
     "style": "真实生活方式、明亮、轻快",
-    "duration": "15s",
-    "landingPageUrl": "https://example.com/products/cup",
-    "referenceImageUrls": [
-      "https://example.com/products/cup-main.png"
+    "generateImageCount": 2,
+    "generateVideoCount": 1
+  }'
+```
+
+启动任务：
+
+```bash
+curl -X POST http://localhost:8080/api/video-tasks/{taskId}/start
+```
+
+进入下一步：
+
+```bash
+curl -X POST http://localhost:8080/api/video-tasks/{taskId}/advance
+```
+
+查询最近历史任务：
+
+```bash
+curl http://localhost:8080/api/video-tasks
+```
+
+查询详情：
+
+```bash
+curl http://localhost:8080/api/video-tasks/{taskId}
+```
+
+保存分镜脚本 / 图片评分 / 视频评分编辑：
+
+```bash
+curl -X POST http://localhost:8080/api/video-tasks/{taskId}/context \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "shots": [],
+    "scoredImageGroups": null,
+    "scoredVideoGroups": null
+  }'
+```
+
+人工选择候选图片/视频：
+
+```bash
+curl -X POST http://localhost:8080/api/video-tasks/{taskId}/select-assets \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "selectedImages": [
+      { "shotId": "shot_001", "assetId": "img_shot_001_1" }
+    ],
+    "selectedVideos": [
+      { "shotId": "shot_001", "assetId": "vid_shot_001_1" }
     ]
   }'
 ```
 
-方式二：一段描述 + 一张商品图片生成
+从指定阶段重新生成：
 
 ```bash
-curl -X POST http://localhost:8080/api/ad-videos/upload \
-  -F 'prompt=参考上传的商品图片，生成一条 15 秒带货广告视频' \
-  -F 'productName=玻璃水' \
-  -F 'productDescription=去虫胶无甲醇去油膜' \
-  -F 'targetAudience=' \
-  -F 'sellingPoints=去虫胶，无甲醇，去油膜' \
-  -F 'style=' \
-  -F 'duration=15s' \
-  -F 'image=@/path/to/cup-main.png'
+curl -X POST http://localhost:8080/api/video-tasks/{taskId}/regenerate \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "fromStage": "IMAGE_GENERATING",
+    "reason": "候选图片不够突出商品卖点"
+  }'
 ```
 
-上传的图片会保存到 `./data/uploads` 便于本地查看，同时会转换成 `data:image/...;base64,...` 形式作为 `referenceImageUrls` 传给后续图片/视频生成步骤。这样 Seedance 图生视频不依赖公网可访问的图片 URL。
+可重新生成阶段：
 
-查询任务：
-
-```bash
-curl http://localhost:8080/api/ad-videos/{taskId}
+```text
+MARKET_PLANNING
+SHOT_SCRIPT_GENERATING
+IMAGE_GENERATING
+VIDEO_GENERATING
+FINAL_COMPOSING
 ```
 
-从失败步骤重试任务：
+任务上下文会持久化到 H2：创建请求原文保存在 `video_task.request_json`，完整上下文保存在 `video_task_context.context_json`。
 
-```bash
-curl -X POST http://localhost:8080/api/ad-videos/{taskId}/retry
-```
-
-任务会用 H2 持久化保存原始请求、状态、每一步 checkpoint、最终结果和错误信息。重试时已经完成的 `MarketAgent`、`DirectorAgent`、`EvaluateAgent`、`Seedream` 或 `ReleaseAgent` 结果会直接复用，只从第一个失败/缺失步骤继续，避免重复消耗模型 token。
+旧版 `/api/ad-videos` 接口已移除，当前主流程统一使用 `/api/video-tasks`。
 
 ## 持久化
 
 - H2 数据文件：`./data/ad-video-gen.mv.db`
 - H2 Console：`http://localhost:8080/h2-console`
-- JDBC URL：`jdbc:h2:file:./data/ad-video-gen`
+- JDBC URL：`jdbc:h2:file:./data/ad-video-gen;MODE=MySQL;AUTO_SERVER=TRUE`
 - 用户名：`sa`
 - 密码：空
-- 服务重启时，仍处于 `RUNNING` 的任务会自动标记为 `FAILED`，然后可以调用 retry 从已保存的 checkpoint 继续。
+- 旧版任务服务重启时，仍处于 `RUNNING` 的任务会自动标记为 `FAILED`，然后可以调用 retry 从已保存的 checkpoint 继续。
+- 文档版任务的状态和上下文保存在 `video_task` / `video_task_context` 表中。
 
 ## 项目结构
 

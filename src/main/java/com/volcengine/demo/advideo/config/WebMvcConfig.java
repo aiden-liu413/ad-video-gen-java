@@ -1,6 +1,7 @@
 package com.volcengine.demo.advideo.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -17,11 +18,19 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String uploadLocation = Path.of(properties.upload().storageDir()).toAbsolutePath().normalize().toUri().toString();
-        if (!uploadLocation.endsWith("/")) {
-            uploadLocation = uploadLocation + "/";
+        String finalVideoLocation = Path.of(properties.ffmpeg().outputDir()).toAbsolutePath().normalize().toUri().toString();
+        if (!finalVideoLocation.endsWith("/")) {
+            finalVideoLocation = finalVideoLocation + "/";
         }
-        registry.addResourceHandler("/uploads/**")
-                .addResourceLocations(uploadLocation);
+        registry.addResourceHandler("/final-videos/**")
+                .addResourceLocations(finalVideoLocation);
+    }
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+                .allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*");
     }
 }

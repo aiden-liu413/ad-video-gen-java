@@ -8,7 +8,7 @@ public record AdVideoProperties(
         ModelEndpoint image,
         ModelEndpoint video,
         ShortLink shortLink,
-        Upload upload
+        Ffmpeg ffmpeg
 ) {
     public record ModelEndpoint(String baseUrl, String apiKey, String model, String endpointId, boolean enabled) {
     }
@@ -16,6 +16,6 @@ public record AdVideoProperties(
     public record ShortLink(String publicBaseUrl) {
     }
 
-    public record Upload(String storageDir) {
+    public record Ffmpeg(String binary, String outputDir) {
     }
 }

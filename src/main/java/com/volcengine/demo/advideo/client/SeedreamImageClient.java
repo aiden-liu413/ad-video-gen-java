@@ -1,13 +1,14 @@
 package com.volcengine.demo.advideo.client;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.volcengine.demo.advideo.config.AdVideoProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -24,37 +25,58 @@ public class SeedreamImageClient {
         this.restClient = restClientBuilder.baseUrl(properties.image().baseUrl()).build();
     }
 
-    public List<String> generateImages(List<String> prompts, List<String> referenceImageUrls) {
+    public List<String> generateImages(String prompt, List<String> referenceImageUrls, int imageCount) {
+        int maxImages = Math.max(1, imageCount);
         if (!properties.image().enabled() || !StringUtils.hasText(properties.image().apiKey())) {
-            log.info("Seedream disabled or api key missing, use mock images, promptCount={}, referenceImageCount={}",
-                    prompts.size(), referenceImageUrls == null ? 0 : referenceImageUrls.size());
-            return prompts.stream()
-                    .map(prompt -> "mock://seedream/images/" + Math.abs(prompt.hashCode()) + ".png")
+            log.info("Seedream disabled or api key missing, use mock images, maxImages={}, referenceImageCount={}",
+                    maxImages, referenceImageUrls == null ? 0 : referenceImageUrls.size());
+            return java.util.stream.IntStream.rangeClosed(1, maxImages)
+                    .mapToObj(index -> "mock://seedream/images/" + Math.abs((prompt + index).hashCode()) + ".png")
                     .toList();
         }
 
-        List<String> imageUrls = new ArrayList<>();
-        log.info("Seedream image generation start, model={}, promptCount={}, referenceImageCount={}",
-                modelName(), prompts.size(), referenceImageUrls == null ? 0 : referenceImageUrls.size());
-        for (String prompt : prompts) {
-            Map<String, Object> payload = Map.of(
-                    "model", modelName(),
-                    "prompt", prompt,
-                    "reference_image_urls", referenceImageUrls == null ? List.of() : referenceImageUrls,
-                    "watermark", false
-            );
-            ImageResponse response = restClient.post()
+        log.info("Seedream image generation start, model={}, maxImages={}, referenceImageCount={}",
+                modelName(), maxImages, referenceImageUrls == null ? 0 : referenceImageUrls.size());
+        List<String> imageUrls = generateImageGroup(prompt, referenceImageUrls, maxImages);
+        log.info("Seedream image generation done, model={}, imageCount={}", modelName(), imageUrls.size());
+        return imageUrls;
+    }
+
+    private List<String> generateImageGroup(String prompt, List<String> referenceImageUrls, int maxImages) {
+        Map<String, Object> payload = Map.of(
+                "model", modelName(),
+                "prompt", prompt,
+                "image", referenceImageUrls == null ? List.of() : referenceImageUrls,
+                "sequential_image_generation", "auto",
+                "sequential_image_generation_options", Map.of("max_images", maxImages),
+                "size", "2K",
+                "output_format", "png",
+                "watermark", false
+        );
+        ImageResponse response;
+        try {
+            response = restClient.post()
                     .uri("/images/generations")
                     .header("Authorization", "Bearer " + properties.image().apiKey())
                     .body(payload)
                     .retrieve()
                     .body(ImageResponse.class);
-            imageUrls.add(firstImageUrl(response, prompt));
-            log.info("Seedream image generated, model={}, generatedCount={}/{}, watermark=false",
-                    modelName(), imageUrls.size(), prompts.size());
+        } catch (RestClientResponseException ex) {
+            log.error("Seedream image generation API failed, model={}, maxImages={}, statusCode={}, responseBody={}",
+                    modelName(), maxImages, ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("Seedream image generation API failed, model={}, maxImages={}", modelName(), maxImages, ex);
+            throw ex;
         }
-        log.info("Seedream image generation done, model={}, imageCount={}", modelName(), imageUrls.size());
-        return imageUrls;
+        log.info("Seedream image group generated, requestModel={}, responseModel={}, maxImages={}, generatedImages={}, outputTokens={}, totalTokens={}, watermark=false",
+                modelName(),
+                response == null ? "" : response.model(),
+                maxImages,
+                response == null || response.usage() == null ? null : response.usage().generatedImages(),
+                response == null || response.usage() == null ? null : response.usage().outputTokens(),
+                response == null || response.usage() == null ? null : response.usage().totalTokens());
+        return imageUrls(response, prompt, maxImages);
     }
 
     private String modelName() {
@@ -63,16 +85,42 @@ public class SeedreamImageClient {
                 : properties.image().model();
     }
 
-    private String firstImageUrl(ImageResponse response, String prompt) {
+    private List<String> imageUrls(ImageResponse response, String prompt, int maxImages) {
         if (response == null || response.data() == null || response.data().isEmpty()) {
-            return "mock://seedream/images/" + Math.abs(prompt.hashCode()) + ".png";
+            return java.util.stream.IntStream.rangeClosed(1, maxImages)
+                    .mapToObj(index -> "mock://seedream/images/" + Math.abs((prompt + index).hashCode()) + ".png")
+                    .toList();
         }
-        return response.data().get(0).url();
+        List<String> imageUrls = response.data().stream()
+                .map(ImageData::url)
+                .filter(StringUtils::hasText)
+                .limit(maxImages)
+                .toList();
+        if (imageUrls.size() >= maxImages) {
+            return imageUrls;
+        }
+        java.util.ArrayList<String> filled = new java.util.ArrayList<>(imageUrls);
+        for (int index = filled.size() + 1; index <= maxImages; index++) {
+            filled.add("mock://seedream/images/" + Math.abs((prompt + index).hashCode()) + ".png");
+        }
+        return filled;
     }
 
-    public record ImageResponse(List<ImageData> data) {
+    public record ImageResponse(
+            String model,
+            Long created,
+            List<ImageData> data,
+            ImageUsage usage
+    ) {
     }
 
-    public record ImageData(String url) {
+    public record ImageData(String url, String size) {
+    }
+
+    public record ImageUsage(
+            @JsonProperty("generated_images") Integer generatedImages,
+            @JsonProperty("output_tokens") Integer outputTokens,
+            @JsonProperty("total_tokens") Integer totalTokens
+    ) {
     }
 }
