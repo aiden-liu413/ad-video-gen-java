@@ -2,6 +2,7 @@ package com.volcengine.demo.advideo.controller;
 
 import com.volcengine.demo.advideo.dto.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
+import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -51,6 +52,11 @@ public class GlobalExceptionHandler {
         log.error("External API request failed, statusCode={}, responseBody={}",
                 ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponse.failure("外部 API 调用失败：" + ex.getStatusCode()));
+    }
+
+    @ExceptionHandler(ClientAbortException.class)
+    public void handleClientAbort(ClientAbortException ex) {
+        log.debug("Client aborted response stream, message={}", ex.getMessage());
     }
 
     @ExceptionHandler(RuntimeException.class)

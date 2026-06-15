@@ -686,11 +686,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         .map(selectedVideo -> selectedVideo.video().url())
                         .toList()
         );
-        ReleasePlan releasePlan = releaseAgent.createReleasePlan(
-                toGenerateRequest(request),
-                new MultimediaResult(finalVideoUrl, "", List.of(), List.of()),
-                config.platform()
-        );
+        ReleasePlan releasePlan = createReleasePlanOrFallback(taskId, request, config, finalVideoUrl);
         return new FinalVideo(
                 finalVideoUrl,
                 releasePlan.headline(),
@@ -698,6 +694,37 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 releasePlan.hashtags(),
                 safeSelectedVideos
         );
+    }
+
+    private ReleasePlan createReleasePlanOrFallback(String taskId, CreateVideoTaskRequest request, VideoConfig config, String finalVideoUrl) {
+        try {
+            return releaseAgent.createReleasePlan(
+                    toGenerateRequest(request),
+                    new MultimediaResult(finalVideoUrl, "", List.of(), List.of()),
+                    config == null ? null : config.platform()
+            );
+        } catch (RuntimeException ex) {
+            log.error("Release plan failed after final video composed, taskId={}, finalVideoUrl={}", taskId, finalVideoUrl, ex);
+            String productName = fallbackProductName(request, config);
+            return new ReleasePlan(
+                    productName + "广告视频",
+                    "视频已合成，可直接预览和下载：" + finalVideoUrl,
+                    List.of("#" + productName, "#广告视频"),
+                    finalVideoUrl
+            );
+        }
+    }
+
+    private String fallbackProductName(CreateVideoTaskRequest request, VideoConfig config) {
+        if (config != null
+                && config.productInfo() != null
+                && StringUtils.hasText(config.productInfo().name())) {
+            return config.productInfo().name();
+        }
+        if (StringUtils.hasText(request.text())) {
+            return "商品";
+        }
+        return "广告商品";
     }
 
     @Transactional
