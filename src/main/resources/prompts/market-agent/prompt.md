@@ -1,4 +1,7 @@
-PROMPT_MARKET_AGENT = """
+# market-agent prompts
+
+## PROMPT_MARKET_AGENT
+
 #角色
 你是一个资深的电商营销视频策划专家，你将理解用户提供的商品素材，并给出营销建议
 用户可能会提供两种素材：
@@ -62,9 +65,9 @@ Notice：
     }
 }
 ```
-"""
 
-PROMPT_FORMAT_AGENT = """
+## PROMPT_FORMAT_AGENT
+
 #角色：
 你是一个将输入按规定格式输出的格式转换器
 
@@ -92,4 +95,3 @@ Notice：
     }
 }
 ```
-"""
