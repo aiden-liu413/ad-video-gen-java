@@ -431,7 +431,7 @@ function App() {
       form.imageUrls.split("\n").map((item) => item.trim()).filter(Boolean).map(normalizeImageUrl)
     );
     if (!imageFile) return manual;
-    return [await fileToDataUrl(imageFile), ...manual];
+    return [await fileToJpegDataUrl(imageFile), ...manual];
   }
 
   async function postAction(path: string, successMessage: string, body?: unknown, options?: { waitForChange?: boolean }) {
@@ -713,7 +713,7 @@ function CreateTaskView({
         <label className="upload-zone">
           <UploadCloud size={42} />
           <strong>{imageFile ? imageFile.name : "拖拽产品图片至此"}</strong>
-          <span>支持 PNG, JPG 或 WEBP</span>
+          <span>支持 PNG, JPG, WEBP 或 AVIF，上传后自动转为 JPEG</span>
           <input type="file" accept="image/*" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} />
         </label>
         <label>
@@ -1304,8 +1304,16 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-async function fileToDataUrl(file: File) {
-  return normalizeImageDataUrl(await readFileAsDataUrl(file));
+async function fileToJpegDataUrl(file: File) {
+  if ("createImageBitmap" in window) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      return drawImageSourceToJpeg(bitmap, () => bitmap.close());
+    } catch {
+      // Fall back to the data URL path below for browsers/files that createImageBitmap cannot decode.
+    }
+  }
+  return convertDataUrlToJpeg(await readFileAsDataUrl(file));
 }
 
 async function normalizeImageUrl(url: string) {
@@ -1318,10 +1326,6 @@ async function normalizeImageUrl(url: string) {
 async function normalizeImageDataUrl(dataUrl: string) {
   const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/i);
   if (!match) return dataUrl;
-  const mimeType = match[1].toLowerCase();
-  if (mimeType === "image/jpeg" || mimeType === "image/png") {
-    return dataUrl;
-  }
   return convertDataUrlToJpeg(dataUrl);
 }
 
@@ -1329,20 +1333,34 @@ function convertDataUrlToJpeg(dataUrl: string, quality = 0.92) {
   return new Promise<string>((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const context = canvas.getContext("2d");
-      if (!context) {
-        reject(new Error("无法创建 canvas 上下文"));
-        return;
-      }
-      context.drawImage(image, 0, 0);
-      resolve(canvas.toDataURL("image/jpeg", quality));
+      resolve(drawImageSourceToJpeg(image, undefined, quality));
     };
     image.onerror = () => reject(new Error("无法解析图片"));
     image.src = dataUrl;
   });
+}
+
+function drawImageSourceToJpeg(image: HTMLImageElement | ImageBitmap, cleanup?: () => void, quality = 0.92) {
+  try {
+    const width = image instanceof HTMLImageElement ? image.naturalWidth : image.width;
+    const height = image instanceof HTMLImageElement ? image.naturalHeight : image.height;
+    if (!width || !height) {
+      throw new Error("图片尺寸无效");
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("无法创建 canvas 上下文");
+    }
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", quality);
+  } finally {
+    cleanup?.();
+  }
 }
 
 function delay(milliseconds: number) {
