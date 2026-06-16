@@ -579,11 +579,27 @@ pre {
   overflow-wrap: anywhere;
 }
 
-.workflow-actions,
-.bottom-actions {
-  display: flex;
-  align-items: center;
+.workflow-actions {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 10px;
+  align-items: stretch;
+  min-width: 220px;
+  flex-shrink: 0;
+}
+
+.workflow-actions button {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.regen-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.regen-actions button {
+  width: 100%;
 }
 
 .status {
@@ -833,25 +849,30 @@ pre {
   position: sticky;
   bottom: 18px;
   z-index: 3;
-  padding: 12px;
-  display: flex;
-  justify-content: space-between;
+  padding: 16px;
+  display: grid;
   gap: 14px;
-  align-items: center;
+  align-items: stretch;
 }
 
 .regen {
-  min-width: 0;
   display: grid;
-  grid-template-columns: auto 170px minmax(180px, 1fr) auto;
-  align-items: center;
-  gap: 10px;
+  gap: 12px;
+  width: 100%;
   color: #5c7285;
-  flex: 1;
 }
 
-.regen span {
+.regen-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.regen-control span {
+  font-size: 13px;
   font-weight: 750;
+  color: #52677c;
 }
 
 .regen-fields {
@@ -859,7 +880,7 @@ pre {
   gap: 10px;
   max-height: 320px;
   overflow: auto;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid #cce0ea;
   border-radius: 8px;
   background: rgba(247, 252, 254, 0.78);
@@ -1022,18 +1043,21 @@ blockquote {
   .source-tabs,
   .metric-row,
   .split-actions,
-  .regen {
+  .regen-toolbar {
     grid-template-columns: 1fr;
   }
 
-  .workflow-head,
-  .bottom-bar {
+  .workflow-head {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .workflow-actions,
-  .bottom-actions {
-    flex-wrap: wrap;
+  .workflow-actions {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .bottom-bar {
+    align-items: stretch;
   }
 }

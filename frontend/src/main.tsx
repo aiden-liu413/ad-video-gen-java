@@ -427,7 +427,9 @@ function App() {
   }
 
   async function prepareImageUrls() {
-    const manual = form.imageUrls.split("\n").map((item) => item.trim()).filter(Boolean);
+    const manual = await Promise.all(
+      form.imageUrls.split("\n").map((item) => item.trim()).filter(Boolean).map(normalizeImageUrl)
+    );
     if (!imageFile) return manual;
     return [await fileToDataUrl(imageFile), ...manual];
   }
@@ -820,6 +822,13 @@ function WorkflowView(props: WorkflowViewProps) {
           </div>
           <p>任务 ID: <span>{task.taskId}</span> · 当前流程：{stageText(task.stage)} · 正在查看：{stageText(viewStage)}</p>
         </div>
+        <div className="workflow-actions">
+          <button onClick={props.onSaveEdits} disabled={props.busy || readOnly || !canEdit(task.stage)}>保存草稿</button>
+          <button className="primary" onClick={props.onAdvance} disabled={props.busy || task.status === "RUNNING" || task.status === "SUCCESS"}>
+            {props.busy ? <Loader2 className="spin" size={18} /> : <Rocket size={18} />}
+            {nextLabel(task.stage)}
+          </button>
+        </div>
       </section>
       <StageStepper current={task.stage} viewing={viewStage} status={task.status} task={task} onSelect={setViewStage} />
       {props.message && <div className="message">{props.message}</div>}
@@ -830,13 +839,6 @@ function WorkflowView(props: WorkflowViewProps) {
       </section>
       <footer className="bottom-bar">
         <RegenerateControls {...props} />
-        <div className="bottom-actions">
-          <button onClick={props.onSaveEdits} disabled={props.busy || readOnly || !canEdit(task.stage)}>保存草稿</button>
-          <button className="primary" onClick={props.onAdvance} disabled={props.busy || task.status === "RUNNING" || task.status === "SUCCESS"}>
-            {props.busy ? <Loader2 className="spin" size={18} /> : <Rocket size={18} />}
-            {nextLabel(task.stage)}
-          </button>
-        </div>
       </footer>
     </div>
   );
@@ -1138,15 +1140,22 @@ function RegenerateControls({
   });
   return (
     <div className="regen">
-      <span>重燃阶段:</span>
-      <select value={regenerateStage} onChange={(event) => setRegenerateStage(event.target.value as TaskStage)}>
-        <option value="MARKET_PLANNING">营销策划</option>
-        <option value="SHOT_SCRIPT_GENERATING">分镜脚本</option>
-        <option value="IMAGE_GENERATING">图片生成与评估</option>
-        <option value="VIDEO_GENERATING">视频生成与评估</option>
-        <option value="FINAL_COMPOSING">最终合成</option>
-      </select>
-      <input value={regenerateReason} onChange={(event) => setRegenerateReason(event.target.value)} placeholder="重燃原因..." />
+      <div className="regen-toolbar">
+        <label className="regen-control">
+          <span>重燃阶段</span>
+          <select value={regenerateStage} onChange={(event) => setRegenerateStage(event.target.value as TaskStage)}>
+            <option value="MARKET_PLANNING">营销策划</option>
+            <option value="SHOT_SCRIPT_GENERATING">分镜脚本</option>
+            <option value="IMAGE_GENERATING">图片生成与评估</option>
+            <option value="VIDEO_GENERATING">视频生成与评估</option>
+            <option value="FINAL_COMPOSING">最终合成</option>
+          </select>
+        </label>
+        <label className="regen-control">
+          <span>重燃原因</span>
+          <input value={regenerateReason} onChange={(event) => setRegenerateReason(event.target.value)} placeholder="填写重燃原因..." />
+        </label>
+      </div>
       <div className="regen-fields">
         {regenerateStage === "MARKET_PLANNING" && (
           <>
@@ -1202,7 +1211,9 @@ function RegenerateControls({
           <MediaGrid groups={task.scoredVideoGroups} selected={regenerateDraft.selectedVideos} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedVideos: value })} type="video" />
         )}
       </div>
-      <button onClick={onRegenerate} disabled={busy}>应用</button>
+      <div className="regen-actions">
+        <button onClick={onRegenerate} disabled={busy}>应用重燃</button>
+      </div>
     </div>
   );
 }
@@ -1284,12 +1295,53 @@ function draftVideoGroups(draft: RegenerateDraft): ShotVideoGroup[] {
   return draft.videoGroups;
 }
 
-function fileToDataUrl(file: File) {
+function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
+  });
+}
+
+async function fileToDataUrl(file: File) {
+  return normalizeImageDataUrl(await readFileAsDataUrl(file));
+}
+
+async function normalizeImageUrl(url: string) {
+  if (url.startsWith("data:image/")) {
+    return normalizeImageDataUrl(url);
+  }
+  return url;
+}
+
+async function normalizeImageDataUrl(dataUrl: string) {
+  const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/i);
+  if (!match) return dataUrl;
+  const mimeType = match[1].toLowerCase();
+  if (mimeType === "image/jpeg" || mimeType === "image/png") {
+    return dataUrl;
+  }
+  return convertDataUrlToJpeg(dataUrl);
+}
+
+function convertDataUrlToJpeg(dataUrl: string, quality = 0.92) {
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("无法创建 canvas 上下文"));
+        return;
+      }
+      context.drawImage(image, 0, 0);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    image.onerror = () => reject(new Error("无法解析图片"));
+    image.src = dataUrl;
   });
 }
 
