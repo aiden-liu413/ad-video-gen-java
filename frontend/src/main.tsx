@@ -921,11 +921,12 @@ function MarketingStage({ task }: { task: TaskDetail }) {
   if (!config) return <div className="empty-state">等待生成营销策划。</div>;
   return (
     <div className="two-pane">
-      <section className="panel-card">
+      <section className="panel-card marketing-plan-card">
         <h3>AI 生成营销策划方案</h3>
         <label>任务标题<input readOnly value={`${config.productInfo?.name ?? "产品"} 营销策划`} /></label>
         <label>目标人群<textarea readOnly value={config.targetAudience ?? ""} /></label>
         <label>核心卖点<textarea readOnly value={config.productInfo?.sellingPoint ?? ""} /></label>
+        <label>创意策略<textarea className="marketing-advice" readOnly value={config.videoAdvice ?? ""} /></label>
       </section>
       <aside className="panel-card">
         <h3>配置摘要</h3>
@@ -936,7 +937,6 @@ function MarketingStage({ task }: { task: TaskDetail }) {
           <span>视频时长<b>{config.duration}s</b></span>
           <span>参考素材<b>{resourceSummary(config.productInfo?.resources)}</b></span>
         </div>
-        <label>创意策略<textarea readOnly value={config.videoAdvice ?? ""} /></label>
       </aside>
     </div>
   );

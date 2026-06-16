@@ -730,10 +730,18 @@ pre {
   color: #617487;
 }
 
+.marketing-plan-card {
+  align-content: start;
+}
+
+.marketing-advice {
+  min-height: 150px;
+}
+
 .summary-list {
   display: grid;
   gap: 10px;
-  margin: 14px 0;
+  margin: 14px 0 0;
 }
 
 .summary-list span {
