@@ -3,17 +3,18 @@ import { createRoot } from "react-dom/client";
 import {
   Archive,
   BarChart3,
+  BookOpen,
   Check,
   CheckCircle2,
+  Clapperboard,
   Copy,
   Download,
   FileText,
   Image as ImageIcon,
   Loader2,
-  Monitor,
+  Music2,
   Plus,
   Rocket,
-  Smartphone,
   Sparkles,
   UploadCloud,
   Video,
@@ -257,10 +258,10 @@ type StageViewProps = WorkflowViewProps & {
 
 const initialForm: FormState = {
   inputType: "product_image",
-  text: "参考上传的商品图片，生成一条 15 秒带货广告视频。商品：玻璃水。卖点：去虫胶、无甲醇、去油膜。",
+  text: "参考上传的商品图片，生成一条 15 秒带货广告视频。商品：卖点：",
   imageUrls: "",
   videoType: "商品展示视频",
-  platform: "mobile",
+  platform: "douyin",
   duration: "15",
   aspectRatio: "9:16",
   style: "赛博朋克",
@@ -281,11 +282,17 @@ const aspectRatioOptions = [
 
 const durationOptions = ["5", "10", "15", "30"];
 
+const platformOptions = [
+  { value: "douyin", label: "抖音", icon: <Music2 size={18} /> },
+  { value: "xiaohongshu", label: "小红书", icon: <BookOpen size={18} /> },
+  { value: "bilibili", label: "哔哩哔哩", icon: <Clapperboard size={18} /> }
+] as const;
+
 const emptyVideoConfig: VideoConfig = {
   videoType: "商品展示视频",
   productInfo: { name: "", sellingPoint: "", resources: [] },
   targetAudience: "",
-  platform: "mobile",
+  platform: "douyin",
   duration: 15,
   aspectRatio: "9:16",
   videoAdvice: ""
@@ -297,7 +304,7 @@ const emptyRegenerateDraft: RegenerateDraft = {
     text: "",
     imageUrls: [],
     videoType: "商品展示视频",
-    platform: "mobile",
+    platform: "douyin",
     duration: 15,
     aspectRatio: "9:16",
     style: "",
@@ -744,9 +751,17 @@ function CreateTaskView({
         <div>
           <span className="field-label">目标平台</span>
           <div className="platforms">
-            <button type="button" className={form.platform === "mobile" ? "active" : ""} onClick={() => setFormValue("platform", "mobile", setForm)}><Smartphone size={22} /></button>
-            <button type="button" className={form.platform === "desktop" ? "active" : ""} onClick={() => setFormValue("platform", "desktop", setForm)}><Monitor size={22} /></button>
-            <button type="button" className={form.platform === "tv" ? "active" : ""} onClick={() => setFormValue("platform", "tv", setForm)}><Video size={22} /></button>
+            {platformOptions.map((platform) => (
+              <button
+                key={platform.value}
+                type="button"
+                className={form.platform === platform.value ? "active" : ""}
+                onClick={() => setFormValue("platform", platform.value, setForm)}
+              >
+                {platform.icon}
+                <span>{platform.label}</span>
+              </button>
+            ))}
           </div>
         </div>
         <div className="metric-row">
@@ -932,7 +947,7 @@ function MarketingStage({ task }: { task: TaskDetail }) {
         <h3>配置摘要</h3>
         <div className="summary-list">
           <span>视频类型<b>{config.videoType}</b></span>
-          <span>目标平台<b>{config.platform}</b></span>
+          <span>目标平台<b>{platformLabel(config.platform)}</b></span>
           <span>视频比例<b>{config.aspectRatio}</b></span>
           <span>视频时长<b>{config.duration}s</b></span>
           <span>参考素材<b>{resourceSummary(config.productInfo?.resources)}</b></span>
@@ -1162,7 +1177,19 @@ function RegenerateControls({
             <label>需求描述<textarea value={regenerateDraft.taskInput.text ?? ""} onChange={(event) => updateTaskInput({ text: event.target.value })} /></label>
             <label>图片链接<textarea value={(regenerateDraft.taskInput.imageUrls ?? []).join("\n")} onChange={(event) => updateTaskInput({ imageUrls: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean) })} /></label>
             <div className="metric-row">
-              <label>目标平台<input value={regenerateDraft.taskInput.platform ?? ""} onChange={(event) => updateTaskInput({ platform: event.target.value })} /></label>
+              <label>
+                目标平台
+                <select
+                  value={regenerateDraft.taskInput.platform ?? "douyin"}
+                  onChange={(event) => updateTaskInput({ platform: event.target.value })}
+                >
+                  {platformOptions.map((platform) => (
+                    <option key={platform.value} value={platform.value}>
+                      {platform.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label>风格<input value={regenerateDraft.taskInput.style ?? ""} onChange={(event) => updateTaskInput({ style: event.target.value })} /></label>
             </div>
             <div className="metric-row">
@@ -1229,7 +1256,7 @@ function regenerateDraftFromTask(task: TaskDetail): RegenerateDraft {
       text: task.request?.text ?? "",
       imageUrls: task.request?.imageUrls ?? task.videoConfig?.productInfo?.resources ?? [],
       videoType: task.request?.videoType ?? "商品展示视频",
-      platform: task.request?.platform ?? task.videoConfig?.platform ?? "mobile",
+      platform: task.request?.platform ?? task.videoConfig?.platform ?? "douyin",
       duration: task.request?.duration ?? task.videoConfig?.duration ?? 15,
       aspectRatio: task.request?.aspectRatio ?? task.videoConfig?.aspectRatio ?? "9:16",
       style: task.request?.style ?? "",
@@ -1501,6 +1528,10 @@ function nextLabel(stage: TaskStage) {
 function summaryTitle(value: string) {
   if (!value) return "未命名任务";
   return value.length > 18 ? `${value.slice(0, 18)}...` : value;
+}
+
+function platformLabel(platform?: string) {
+  return platformOptions.find((item) => item.value === platform)?.label ?? platform ?? "抖音";
 }
 
 function shortId(value: string) {

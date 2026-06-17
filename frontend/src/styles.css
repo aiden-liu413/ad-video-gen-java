@@ -534,6 +534,21 @@ pre {
   gap: 8px;
 }
 
+.platforms button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 112px;
+  padding: 0 14px;
+}
+
+.platforms button span {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .style-tags span {
   border: 1px solid #b9dce6;
   border-radius: 999px;
