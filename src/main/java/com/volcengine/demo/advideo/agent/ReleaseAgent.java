@@ -1,6 +1,7 @@
 package com.volcengine.demo.advideo.agent;
 
 import com.volcengine.demo.advideo.client.ArkChatClient;
+import com.volcengine.demo.advideo.domain.model.VideoConfig;
 import com.volcengine.demo.advideo.dto.GenerateRequest;
 import com.volcengine.demo.advideo.dto.GenerationResult.MultimediaResult;
 import com.volcengine.demo.advideo.dto.GenerationResult.ReleasePlan;
@@ -24,9 +25,9 @@ public class ReleaseAgent {
         this.promptService = promptService;
     }
 
-    public ReleasePlan createReleasePlan(GenerateRequest request, MultimediaResult multimedia, String platform) {
-        String productName = request.productName() == null || request.productName().isBlank() ? "广告商品" : request.productName();
-        String targetPlatform = StringUtils.hasText(platform) ? platform : "通用短视频平台";
+    public ReleasePlan createReleasePlan(GenerateRequest request, MultimediaResult multimedia, VideoConfig config) {
+        String productName = config.productInfo().name() == null || config.productInfo().name().isBlank() ? "广告商品" : config.productInfo().name();
+        String targetPlatform = StringUtils.hasText(config.platform()) ? config.platform() : "通用短视频平台";
         String releaseAdvice = releaseAdvice(targetPlatform);
         String shortLink = shortLinkService.createShortLink(multimedia.videoUrl());
         String copy = chatClient.complete(

@@ -835,7 +835,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             return releaseAgent.createReleasePlan(
                     toGenerateRequest(request),
                     new MultimediaResult(finalVideoUrl, "", List.of(), List.of()),
-                    config == null ? null : config.platform()
+                    config
             );
         } catch (RuntimeException ex) {
             log.error("Release plan failed after final video composed, taskId={}, finalVideoUrl={}", taskId, finalVideoUrl, ex);

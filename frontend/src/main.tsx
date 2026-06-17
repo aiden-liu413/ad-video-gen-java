@@ -1212,7 +1212,7 @@ function RegenerateControls({
         {regenerateStage === "IMAGE_GENERATING" && (
           <>
             <div className="metric-row">
-              <label>候选图片数量<input type="number" min={1} max={10} value={regenerateDraft.taskInput.generateImageCount ?? 4} onChange={(event) => updateTaskInput({ generateImageCount: Number(event.target.value || 4) })} /></label>
+              <label>候选图片数量<input type="number" min={1} max={10} value={regenerateDraft.taskInput.generateImageCount ?? 1} onChange={(event) => updateTaskInput({ generateImageCount: Number(event.target.value || 1) })} /></label>
               <label>画面比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
             </div>
             <div className="regen-shot-list">
@@ -1230,7 +1230,7 @@ function RegenerateControls({
         )}
         {regenerateStage === "VIDEO_GENERATING" && (
           <>
-            <label>候选视频数量<input type="number" min={1} max={5} value={regenerateDraft.taskInput.generateVideoCount ?? 2} onChange={(event) => updateTaskInput({ generateVideoCount: Number(event.target.value || 2) })} /></label>
+            <label>候选视频数量<input type="number" min={1} max={5} value={regenerateDraft.taskInput.generateVideoCount ?? 1} onChange={(event) => updateTaskInput({ generateVideoCount: Number(event.target.value || 1) })} /></label>
             <MediaGrid groups={task.scoredImageGroups} selected={regenerateDraft.selectedImages} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })} type="image" />
           </>
         )}
