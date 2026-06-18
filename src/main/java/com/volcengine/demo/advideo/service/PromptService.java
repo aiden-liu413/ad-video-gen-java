@@ -28,6 +28,10 @@ public class PromptService {
         return get("prompts/evaluate-agent/prompt.md", "PROMPT_EVALUATE_AGENT");
     }
 
+    public String imageGroupingAgent() {
+        return get("prompts/evaluate-agent/prompt.md", "PROMPT_IMAGE_GROUPING_AGENT");
+    }
+
     public String releaseAgent() {
         return get("prompts/release-agent/prompt.md", "PROMPT_RELEASE_AGENT");
     }
