@@ -1,0 +1,10 @@
+.git
+.idea
+.m2
+data
+target
+frontend/dist
+frontend/node_modules
+*.iml
+*.log
+.DS_Store

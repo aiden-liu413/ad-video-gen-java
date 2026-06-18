@@ -31,8 +31,13 @@ Java 代码通过 `PromptService` 解析这些文件里的 `PROMPT_XXX = """..."
 
 ## 启动
 
+执行 Maven 打包时会自动安装项目所需的 Node.js/npm、构建前端，并将
+`frontend/dist` 复制到 `target/classes/static` 后打入 Spring Boot JAR。
+前端构建产物只存在于 `target`，不会写入源码资源目录或加入 Git 管理。
+
 ```bash
-mvn spring-boot:run
+mvn clean package
+java -jar target/ad-video-gen-java-0.0.1-SNAPSHOT.jar
 ```
 
 可选环境变量：
@@ -73,6 +78,42 @@ npm run dev
 
 ```text
 http://localhost:8002/
+```
+
+本地开发仍可单独运行 Vite；正式打包和 Docker 部署时，前端由 Spring Boot
+直接托管，无需单独部署。
+
+## Docker 部署
+
+镜像使用 Java 17 运行，并内置最终视频合成所需的 FFmpeg。容器默认监听
+`48080`，H2 数据库与最终视频分别持久化到两个宿主机目录：
+
+```bash
+docker build -t ad-video-gen-java .
+
+docker run -d \
+  --name ad-video-gen-java \
+  -p 48080:48080 \
+  -e ARK_API_KEY=你的方舟APIKey \
+  -e IMAGE_GENERATION_ENABLED=true \
+  -e VIDEO_GENERATION_ENABLED=true \
+  -v "$(pwd)/docker-data/db:/app/data/db" \
+  -v "$(pwd)/docker-data/videos:/app/data/videos" \
+  ad-video-gen-java
+```
+
+访问地址：
+
+```text
+前端工作台：http://localhost:48080/
+H2 Console：http://localhost:48080/h2-console
+最终视频：http://localhost:48080/final-videos/{文件名}.mp4
+```
+
+容器内 H2 JDBC URL 为：
+
+```text
+jdbc:h2:file:/app/data/db/ad-video-gen;MODE=MySQL
 ```
 
 工作台按设计文档中的状态机推进：
