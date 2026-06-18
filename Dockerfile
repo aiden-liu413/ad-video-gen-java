@@ -1,27 +1,17 @@
-FROM maven:3.9.9-eclipse-temurin-17 AS builder
-WORKDIR /workspace
+FROM eclipse-temurin:17-jre-ubi9-minimal
 
-COPY pom.xml ./
-COPY frontend/package.json frontend/package-lock.json ./frontend/
-RUN mvn -B -DskipTests dependency:go-offline
+ADD docker/ffmpeg/ffmpeg-master-latest-linux64-gpl.tar.xz /tmp/ffmpeg/
 
-COPY src ./src
-COPY frontend ./frontend
-RUN mvn -B -DskipTests package
-
-FROM eclipse-temurin:17-jre-jammy
-
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ffmpeg curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system app \
-    && useradd --system --gid app --home-dir /app app
+RUN cp /tmp/ffmpeg/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg \
+    && chmod 0755 /usr/local/bin/ffmpeg \
+    && rm -rf /tmp/ffmpeg
 
 WORKDIR /app
 RUN mkdir -p /app/data/db /app/data/videos \
-    && chown -R app:app /app
+    && chown -R 1001:0 /app \
+    && chmod -R g=u /app
 
-COPY --from=builder --chown=app:app /workspace/target/ad-video-gen-java-*.jar /app/app.jar
+COPY --chown=1001:0 target/ad-video-gen-java-*.jar /app/app.jar
 
 ENV SERVER_PORT=48080 \
     SPRING_DATASOURCE_URL="jdbc:h2:file:/app/data/db/ad-video-gen;MODE=MySQL" \
@@ -33,9 +23,6 @@ ENV SERVER_PORT=48080 \
 VOLUME ["/app/data/db", "/app/data/videos"]
 EXPOSE 48080
 
-USER app
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl --fail --silent http://localhost:48080/actuator/health || exit 1
+USER 1001
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

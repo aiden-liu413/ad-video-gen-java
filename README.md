@@ -85,10 +85,19 @@ http://localhost:8002/
 
 ## Docker 部署
 
-镜像使用 Java 17 运行，并内置最终视频合成所需的 FFmpeg。容器默认监听
-`48080`，H2 数据库与最终视频分别持久化到两个宿主机目录：
+运行层使用精简的 Eclipse Temurin 17 UBI minimal 镜像。FFmpeg 不在镜像构建
+期间联网安装，而是从项目本地的 Linux x64 安装包复制并解压。先准备安装包：
 
 ```bash
+mkdir -p docker/ffmpeg
+cp /本地路径/ffmpeg-master-latest-linux64-gpl.tar.xz docker/ffmpeg/
+```
+
+项目当前使用的安装包架构为 Linux x86_64；压缩包已排除 Git 管理。容器默认
+监听 `48080`，H2 数据库与最终视频分别持久化到两个宿主机目录：
+
+```bash
+mvn clean package
 docker build -t ad-video-gen-java .
 
 docker run -d \

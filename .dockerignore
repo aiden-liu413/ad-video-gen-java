@@ -2,7 +2,8 @@
 .idea
 .m2
 data
-target
+target/*
+!target/ad-video-gen-java-*.jar
 frontend/dist
 frontend/node_modules
 *.iml
