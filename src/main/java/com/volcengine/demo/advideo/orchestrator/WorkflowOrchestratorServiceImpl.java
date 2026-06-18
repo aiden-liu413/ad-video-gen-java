@@ -50,11 +50,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -515,14 +512,13 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 shots.size(), imageCountPerShot, totalImageCount);
         String prompt = buildBatchImagePrompt(config, shots, imageCountPerShot);
         List<String> urls = imageClient.generateImages(prompt, config.productInfo().resources(), totalImageCount);
-        List<String> regroupedUrls = regroupImagesByShot(urls, shots, imageCountPerShot);
         List<ShotImageGroup> groups = new ArrayList<>();
         int cursor = 0;
         for (Shot shot : shots) {
             List<ImageCandidate> images = new ArrayList<>();
             for (int index = 1; index <= imageCountPerShot; index++) {
-                String url = cursor < regroupedUrls.size()
-                        ? regroupedUrls.get(cursor)
+                String url = cursor < urls.size()
+                        ? urls.get(cursor)
                         : "mock://seedream/images/" + Math.abs((shot.prompt() + index).hashCode()) + ".png";
                 images.add(new ImageCandidate(
                         assetId("img", shot.shotId(), index),
@@ -543,140 +539,32 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     private String buildBatchImagePrompt(VideoConfig config, List<Shot> shots, int imageCountPerShot) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("请一次性生成").append(shots.size() * imageCountPerShot).append("张广告候选图片。");
-        prompt.append("按以下分镜顺序输出，每个分镜连续生成").append(imageCountPerShot).append("张候选图。");
-        prompt.append("同一分镜内保持商品主体和广告风格一致，但构图、镜头角度、光线或场景细节需要有区分，便于后续评分挑选。");
-        prompt.append("严格禁止把前后分镜的内容混在同一组候选图中。");
-        prompt.append("每个分镜输出的").append(imageCountPerShot).append("张图都必须只服务当前分镜，不得提前展示后续分镜的场景、动作、结果画面，也不得复用前一分镜的核心画面。");
-        prompt.append("如果某张图更像别的分镜，宁可重新组织当前分镜画面，也不要跨分镜串场。");
-        prompt.append("同一分镜候选图允许变化的仅是构图、机位、景别、光线和细节，不允许改变该分镜的叙事阶段、主体状态和营销目的。");
+        prompt.append("必须严格按照以下分镜 ID 顺序返回结果，不允许调整顺序。");
+        prompt.append("返回顺序必须是：");
+        for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
+            Shot shot = shots.get(shotIndex);
+            for (int candidateIndex = 1; candidateIndex <= imageCountPerShot; candidateIndex++) {
+                if (shotIndex > 0 || candidateIndex > 1) {
+                    prompt.append(" -> ");
+                }
+                prompt.append(shot.shotId()).append("#").append(candidateIndex);
+            }
+        }
+        prompt.append("。");
+        prompt.append("同一分镜内必须连续生成").append(imageCountPerShot).append("张候选图，严禁把别的分镜图片插入当前分镜组。");
+        prompt.append("同一分镜内保持商品主体、场景阶段、营销目的和动作前提一致，只允许构图、镜头角度、光线、景别和细节变化。");
+        prompt.append("不得提前展示后续分镜的场景、动作、结果画面，也不得复用前一分镜的核心画面。");
+        prompt.append("如果某张图更像别的分镜，必须重画为当前分镜内容，而不是跨分镜串场。");
+        prompt.append("每张图都要与所属分镜 ID 完整对应，确保后端可以按返回顺序直接切分到对应分镜。");
         prompt.append("画面比例：").append(config.aspectRatio()).append("。要求：无水印，商品清晰，广告可用。\n");
         for (Shot shot : shots) {
             prompt.append("\n分镜 ").append(shot.shotId()).append("：\n");
             prompt.append("视觉提示词：").append(shot.prompt()).append("\n");
             prompt.append("动作/镜头：").append(shot.action()).append("\n");
             prompt.append("口播/字幕：").append(shot.words()).append("\n");
+            prompt.append("当前分镜必须连续输出 ").append(imageCountPerShot).append(" 张，仅对应 ").append(shot.shotId()).append("。\n");
         }
         return prompt.toString();
-    }
-
-    private List<String> regroupImagesByShot(List<String> urls, List<Shot> shots, int imageCountPerShot) {
-        if (urls == null || urls.isEmpty() || shots == null || shots.isEmpty() || imageCountPerShot <= 0) {
-            return urls == null ? List.of() : urls;
-        }
-        if (urls.size() <= 1 || !StringUtils.hasText(promptService.imageGroupingAgent())) {
-            return urls;
-        }
-
-        log.info("Regroup image candidates by shot, imageCount={}, shotCount={}, imageCountPerShot={}",
-                urls.size(), shots.size(), imageCountPerShot);
-        List<ImageShotAssignment> assignments = awaitAll(urls.stream()
-                .map(url -> CompletableFuture.supplyAsync(() -> classifyImageShot(url, shots)))
-                .toList());
-
-        Map<String, Integer> remainingSlots = new LinkedHashMap<>();
-        Map<String, List<String>> groupedUrls = new LinkedHashMap<>();
-        for (Shot shot : shots) {
-            remainingSlots.put(shot.shotId(), imageCountPerShot);
-            groupedUrls.put(shot.shotId(), new ArrayList<>());
-        }
-
-        assignments.stream()
-                .sorted(Comparator.comparing(ImageShotAssignment::score).reversed())
-                .forEach(assignment -> tryAssignImageToShot(assignment, remainingSlots, groupedUrls));
-
-        Set<String> assignedUrls = new HashSet<>();
-        groupedUrls.values().forEach(list -> assignedUrls.addAll(list));
-        List<String> unassignedUrls = urls.stream()
-                .filter(url -> !assignedUrls.contains(url))
-                .toList();
-
-        int fallbackCursor = 0;
-        for (Shot shot : shots) {
-            List<String> shotUrls = groupedUrls.get(shot.shotId());
-            while (shotUrls.size() < imageCountPerShot && fallbackCursor < unassignedUrls.size()) {
-                shotUrls.add(unassignedUrls.get(fallbackCursor));
-                fallbackCursor += 1;
-            }
-        }
-
-        List<String> flattened = new ArrayList<>(shots.size() * imageCountPerShot);
-        for (Shot shot : shots) {
-            List<String> shotUrls = groupedUrls.get(shot.shotId());
-            flattened.addAll(shotUrls.stream().limit(imageCountPerShot).toList());
-        }
-        log.info("Regroup image candidates done, groupedImageCount={}, originalImageCount={}",
-                flattened.size(), urls.size());
-        return flattened.isEmpty() ? urls : flattened;
-    }
-
-    private void tryAssignImageToShot(
-            ImageShotAssignment assignment,
-            Map<String, Integer> remainingSlots,
-            Map<String, List<String>> groupedUrls
-    ) {
-        if (assignment == null || !StringUtils.hasText(assignment.url())) {
-            return;
-        }
-        String assignedShotId = assignment.shotId();
-        if (!StringUtils.hasText(assignedShotId) || !remainingSlots.containsKey(assignedShotId)) {
-            return;
-        }
-        if (remainingSlots.get(assignedShotId) <= 0) {
-            return;
-        }
-        List<String> shotUrls = groupedUrls.get(assignedShotId);
-        if (shotUrls.contains(assignment.url())) {
-            return;
-        }
-        shotUrls.add(assignment.url());
-        remainingSlots.put(assignedShotId, remainingSlots.get(assignedShotId) - 1);
-    }
-
-    private ImageShotAssignment classifyImageShot(String imageUrl, List<Shot> shots) {
-        String shotSummary = shots.stream()
-                .map(shot -> """
-                        - shotId: %s
-                          prompt: %s
-                          action: %s
-                          words: %s
-                        """.formatted(
-                        shot.shotId(),
-                        valueOrDefault(shot.prompt(), ""),
-                        valueOrDefault(shot.action(), ""),
-                        valueOrDefault(shot.words(), "")
-                ))
-                .reduce("", String::concat);
-
-        String response = chatClient.complete(
-                promptService.imageGroupingAgent(),
-                """
-                        请判断这张候选图片最匹配哪一个分镜，并严格按系统要求返回 JSON。
-                        候选分镜如下：
-                        %s
-                        当前图片 URL：%s
-                        """.formatted(shotSummary, summarizeAssetUrl(imageUrl)),
-                List.of(imageUrl)
-        );
-        return parseImageShotAssignment(response, imageUrl, shots);
-    }
-
-    private ImageShotAssignment parseImageShotAssignment(String response, String imageUrl, List<Shot> shots) {
-        String fallbackShotId = shots.isEmpty() ? "" : shots.get(0).shotId();
-        for (String candidate : jsonCandidates(response)) {
-            try {
-                JsonNode root = objectMapper.readTree(candidate);
-                String shotId = root.path("shotId").asText(fallbackShotId);
-                int score = Math.max(0, Math.min(100, root.path("score").asInt(0)));
-                String reason = root.path("reason").asText("");
-                if (shots.stream().noneMatch(shot -> shot.shotId().equals(shotId))) {
-                    continue;
-                }
-                return new ImageShotAssignment(imageUrl, shotId, score, reason);
-            } catch (Exception ignored) {
-                // Try the next possible JSON fragment.
-            }
-        }
-        return new ImageShotAssignment(imageUrl, fallbackShotId, 0, "分镜归组模型输出未能解析，已使用默认归组。");
     }
 
     private List<ShotImageGroup> evaluateImages(List<ShotImageGroup> imageGroups) {
@@ -1217,9 +1105,6 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
 
     private String assetId(String prefix, String shotId, int index) {
         return prefix + "_" + shotId + "_" + index;
-    }
-
-    private record ImageShotAssignment(String url, String shotId, Integer score, String reason) {
     }
 
     private String valueOrDefault(String value, String fallback) {
