@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
@@ -45,6 +46,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleNotFound(NoSuchElementException ex) {
         log.warn("Requested resource not found, message={}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.failure("资源不存在"));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleStaticResourceNotFound(NoResourceFoundException ex) {
+        log.debug("Static resource not found, resourcePath={}", ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.failure("静态资源不存在"));
     }
 
     @ExceptionHandler(RestClientResponseException.class)
