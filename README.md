@@ -104,8 +104,10 @@ docker run -d \
   --name ad-video-gen-java \
   -p 48080:48080 \
   -e ARK_API_KEY=你的方舟APIKey \
-  -e IMAGE_GENERATION_ENABLED=true \
-  -e VIDEO_GENERATION_ENABLED=true \
+  -e CGT_ENDPOINT_ID=你的Seedream接入点ID \
+  -e T2V_ENDPOINT_ID=你的Seedance接入点ID \
+  -e LLM_ENDPOINT_ID=你的LLM接入点ID \
+  -e PUBLIC_BASE_URL=http://你的服务暴露的ip或域名:48080 \
   -v "$(pwd)/docker-data/db:/app/data/db" \
   -v "$(pwd)/docker-data/videos:/app/data/videos" \
   ad-video-gen-java

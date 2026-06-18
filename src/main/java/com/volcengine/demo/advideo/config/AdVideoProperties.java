@@ -10,7 +10,7 @@ public record AdVideoProperties(
         ShortLink shortLink,
         Ffmpeg ffmpeg
 ) {
-    public record ModelEndpoint(String baseUrl, String apiKey, String model, String endpointId, boolean enabled) {
+    public record ModelEndpoint(String baseUrl, String apiKey, String model, String endpointId) {
     }
 
     public record ShortLink(String publicBaseUrl) {

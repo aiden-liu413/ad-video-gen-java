@@ -34,8 +34,8 @@ public class SeedreamImageClient {
 
     public List<String> generateImages(String prompt, List<String> referenceImageUrls, int imageCount) {
         int maxImages = Math.max(1, imageCount);
-        if (!properties.image().enabled() || !StringUtils.hasText(properties.image().apiKey())) {
-            log.info("Seedream disabled or api key missing, use mock images, maxImages={}, referenceImageCount={}",
+        if (!StringUtils.hasText(properties.image().apiKey())) {
+            log.info("Seedream api key missing, use mock images, maxImages={}, referenceImageCount={}",
                     maxImages, referenceImageUrls == null ? 0 : referenceImageUrls.size());
             return java.util.stream.IntStream.rangeClosed(1, maxImages)
                     .mapToObj(index -> "mock://seedream/images/" + Math.abs((prompt + index).hashCode()) + ".png")

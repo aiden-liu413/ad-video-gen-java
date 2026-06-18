@@ -30,10 +30,10 @@ public class SeedanceVideoClient {
     }
 
     public VideoGeneration generateVideo(String productName, List<String> imageUrls, String script, int durationSeconds, String ratio) {
-        if (!properties.video().enabled() || !StringUtils.hasText(properties.video().apiKey())) {
+        if (!StringUtils.hasText(properties.video().apiKey())) {
             String taskId = UUID.randomUUID().toString();
             String videoUrl = properties.shortLink().publicBaseUrl() + "/mock/seedance/videos/" + taskId + ".mp4";
-            log.info("Seedance disabled or api key missing, use mock video, taskId={}, imageCount={}", taskId, imageUrls.size());
+            log.info("Seedance api key missing, use mock video, taskId={}, imageCount={}", taskId, imageUrls.size());
             return new VideoGeneration(taskId, videoUrl);
         }
 

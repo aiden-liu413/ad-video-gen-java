@@ -31,14 +31,12 @@ ad-video:
     # Doubao-Seedream 4.5 pro: 文生图 / 参考图生图
     model: ${IMAGE_MODEL:doubao-seedream-4-5-pro}
     endpoint-id: ${CGT_ENDPOINT_ID:}
-    enabled: ${IMAGE_GENERATION_ENABLED:false}
   video:
     base-url: https://ark.cn-beijing.volces.com/api/v3
     api-key: ${ARK_API_KEY:}
     # Doubao-Seedance 1.0 pro: 图文生视频
     model: ${VIDEO_MODEL:doubao-seedance-1-0-pro}
     endpoint-id: ${T2V_ENDPOINT_ID:}
-    enabled: ${VIDEO_GENERATION_ENABLED:false}
   short-link:
     public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   ffmpeg:
