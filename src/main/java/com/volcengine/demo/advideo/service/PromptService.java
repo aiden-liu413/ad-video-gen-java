@@ -1,9 +1,10 @@
 package com.volcengine.demo.advideo.service;
 
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,7 +38,7 @@ public class PromptService {
 
     private String load(String resourcePath, String constantName) {
         try {
-            String source = new ClassPathResource(resourcePath).getContentAsString(StandardCharsets.UTF_8);
+            String source = readClasspathResource(resourcePath);
             Pattern sectionPattern = Pattern.compile(
                     "^##\\s+" + Pattern.quote(constantName) + "\\s*$([\\s\\S]*?)(?=^##\\s+PROMPT_[A-Z0-9_]+\\s*$|\\z)",
                     Pattern.MULTILINE
@@ -50,5 +51,29 @@ public class PromptService {
             throw new IllegalStateException("Prompt resource not found: " + resourcePath, ex);
         }
         throw new IllegalStateException("Prompt section not found: " + constantName + " in " + resourcePath);
+    }
+
+    /**
+     * Reads a prompt directly from the active classpath so the same code works from IDE classes
+     * and from resources nested inside a Spring Boot executable JAR.
+     */
+    private String readClasspathResource(String resourcePath) throws IOException {
+        try (InputStream inputStream = openClasspathResource(resourcePath)) {
+            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private InputStream openClasspathResource(String resourcePath) throws IOException {
+        ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+        InputStream inputStream = contextClassLoader == null
+                ? null
+                : contextClassLoader.getResourceAsStream(resourcePath);
+        if (inputStream == null) {
+            inputStream = PromptService.class.getClassLoader().getResourceAsStream(resourcePath);
+        }
+        if (inputStream == null) {
+            throw new FileNotFoundException(resourcePath);
+        }
+        return inputStream;
     }
 }
