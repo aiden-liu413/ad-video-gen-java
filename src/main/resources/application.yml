@@ -37,8 +37,6 @@ ad-video:
     # Doubao-Seedance 1.0 pro: 图文生视频
     model: ${VIDEO_MODEL:doubao-seedance-1-0-pro}
     endpoint-id: ${T2V_ENDPOINT_ID:}
-  file-upload:
-    purpose: ${ARK_FILE_PURPOSE:vision}
   short-link:
     public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   ffmpeg:
