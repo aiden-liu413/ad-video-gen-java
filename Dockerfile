@@ -1,12 +1,16 @@
 FROM eclipse-temurin:17-jre-ubi9-minimal
 
-WORKDIR /app
+ADD docker/ffmpeg/ffmpeg-master-latest-linux64-gpl.tar.xz /tmp/ffmpeg/
 
+RUN cp /tmp/ffmpeg/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg \
+    && chmod 0755 /usr/local/bin/ffmpeg \
+    && rm -rf /tmp/ffmpeg
+
+WORKDIR /app
 RUN mkdir -p /app/data/db /app/data/videos \
     && chown -R 1001:0 /app \
     && chmod -R g=u /app
 
-COPY --chown=1001:0 docker/ffmpeg/ffmpeg /usr/local/bin/ffmpeg
 COPY --chown=1001:0 target/ad-video-gen-java-*.jar /app/app.jar
 
 ENV SERVER_PORT=48080 \

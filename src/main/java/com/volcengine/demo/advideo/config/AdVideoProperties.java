@@ -7,6 +7,7 @@ public record AdVideoProperties(
         ModelEndpoint llm,
         ModelEndpoint image,
         ModelEndpoint video,
+        FileUpload fileUpload,
         ShortLink shortLink,
         Ffmpeg ffmpeg
 ) {
@@ -14,6 +15,9 @@ public record AdVideoProperties(
     }
 
     public record ShortLink(String publicBaseUrl) {
+    }
+
+    public record FileUpload(String purpose) {
     }
 
     public record Ffmpeg(String binary, String outputDir) {

@@ -240,12 +240,13 @@ pre {
 
 .preset-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
 .preset-row button {
   min-width: 0;
+  min-height: 38px;
   padding: 0 8px;
   font-weight: 750;
 }
@@ -457,6 +458,11 @@ pre {
 .panel-card h3 {
   margin: 0;
   font-size: 18px;
+}
+
+.config-section {
+  display: grid;
+  gap: 10px;
 }
 
 .source-tabs {
@@ -776,7 +782,9 @@ pre {
 }
 
 .stage-canvas {
-  min-height: 560px;
+  display: grid;
+  gap: 18px;
+  min-height: 0;
 }
 
 .two-pane,
@@ -1003,12 +1011,12 @@ pre {
 }
 
 .bottom-bar {
-  position: sticky;
-  bottom: 18px;
-  z-index: 3;
-  padding: 16px;
+  position: relative;
+  z-index: 1;
+  margin-top: 2px;
+  padding: 18px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
   align-items: stretch;
 }
 
@@ -1022,9 +1030,9 @@ pre {
 .regen-toolbar {
   display: grid;
   grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
-  gap: 14px;
+  gap: 16px;
   align-items: end;
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid #d8e6ee;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.82);
@@ -1032,8 +1040,8 @@ pre {
 
 .regen-stage-intro {
   display: grid;
-  gap: 4px;
-  padding: 0 2px;
+  gap: 6px;
+  padding: 0 2px 2px;
 }
 
 .regen-stage-intro b {
@@ -1055,10 +1063,10 @@ pre {
 
 .regen-fields {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   max-height: 420px;
   overflow: auto;
-  padding: 16px;
+  padding: 18px;
   border: 1px solid #cce0ea;
   border-radius: 8px;
   background: rgba(247, 252, 254, 0.78);
@@ -1071,7 +1079,7 @@ pre {
 .regen-section {
   display: grid;
   gap: 16px;
-  padding: 18px;
+  padding: 20px;
   border: 1px solid #dbe8ef;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.92);
@@ -1431,6 +1439,10 @@ blockquote {
   .split-actions,
   .regen-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .preset-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .workflow-inline-tabs {

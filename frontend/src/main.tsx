@@ -310,7 +310,7 @@ const aspectRatioOptions = [
   { value: "9:21", label: "9:21" }
 ];
 
-const durationOptions = ["5", "10", "15", "30"];
+const durationOptions = ["5", "10", "15"];
 
 const platformOptions = [
   { value: "douyin", label: "抖音", icon: <Music2 size={18} /> },
@@ -902,7 +902,7 @@ function CreateTaskView({
       </section>
       <aside className="config-card">
         <h3>生成配置</h3>
-        <div>
+        <div className="config-section">
           <span className="field-label">目标平台</span>
           <div className="platforms">
             {platformOptions.map((platform) => (
@@ -939,7 +939,7 @@ function CreateTaskView({
             </select>
           </label>
         </div>
-        <div>
+        <div className="config-section">
           <span className="field-label">视觉风格</span>
           <div className="style-tags">
             {["赛博朋克", "极简", "电影感", "黑色电影", "动漫风"].map((style) => (
@@ -948,8 +948,8 @@ function CreateTaskView({
               </button>
             ))}
           </div>
+          <textarea value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="输入自定义风格描述..." />
         </div>
-        <textarea value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="输入自定义风格描述..." />
         <div className="summary-flags">
           <label className="summary-flag-toggle">
             <span>图片评分</span>
