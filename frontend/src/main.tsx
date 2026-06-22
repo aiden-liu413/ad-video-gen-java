@@ -430,8 +430,14 @@ function App() {
   }
 
   function applyTaskDetail(detail: TaskDetail) {
-    const nextSelectedImages = Object.fromEntries((detail.selectedImages ?? []).map((item) => [item.shotId, item.image.assetId]));
-    const nextSelectedVideos = Object.fromEntries((detail.selectedVideos ?? []).map((item) => [item.shotId, item.video.assetId]));
+    const selectedImageMap = Object.fromEntries((detail.selectedImages ?? []).map((item) => [item.shotId, item.image.assetId]));
+    const selectedVideoMap = Object.fromEntries((detail.selectedVideos ?? []).map((item) => [item.shotId, item.video.assetId]));
+    const nextSelectedImages = Object.keys(selectedImageMap).length > 0
+      ? selectedImageMap
+      : fallbackSelectedImages(detail.imageGroups ?? [], detail.scoredImageGroups ?? []);
+    const nextSelectedVideos = Object.keys(selectedVideoMap).length > 0
+      ? selectedVideoMap
+      : fallbackSelectedVideos(detail.videoGroups ?? [], detail.scoredVideoGroups ?? []);
     setTask(detail);
     setSelectedImages(nextSelectedImages);
     setSelectedVideos(nextSelectedVideos);
@@ -705,6 +711,22 @@ function App() {
       </main>
     </div>
   );
+}
+
+function fallbackSelectedImages(imageGroups: ShotImageGroup[], scoredImageGroups: ShotImageGroup[]) {
+  const groups = scoredImageGroups.length > 0 ? scoredImageGroups : imageGroups;
+  return Object.fromEntries(groups.flatMap((group) => {
+    const [first] = group.images ?? [];
+    return first ? [[group.shotId, first.assetId]] : [];
+  }));
+}
+
+function fallbackSelectedVideos(videoGroups: ShotVideoGroup[], scoredVideoGroups: ShotVideoGroup[]) {
+  const groups = scoredVideoGroups.length > 0 ? scoredVideoGroups : videoGroups;
+  return Object.fromEntries(groups.flatMap((group) => {
+    const [first] = group.videos ?? [];
+    return first ? [[group.shotId, first.assetId]] : [];
+  }));
 }
 
 function Topbar({
@@ -1588,13 +1610,13 @@ function RegenerateControls({
                 })}
               </div>
             ) : (
-              <MediaGrid groups={task.scoredImageGroups} selected={regenerateDraft.selectedImages} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })} type="image" />
+              <MediaGrid groups={draftImageGroups(regenerateDraft)} selected={regenerateDraft.selectedImages} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })} type="image" />
             )}
           </section>
         )}
         {regenerateStage === "FINAL_COMPOSING" && (
           <section className="regen-section">
-            <MediaGrid groups={task.scoredVideoGroups} selected={regenerateDraft.selectedVideos} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedVideos: value })} type="video" />
+            <MediaGrid groups={draftVideoGroups(regenerateDraft)} selected={regenerateDraft.selectedVideos} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedVideos: value })} type="video" />
           </section>
         )}
       </div>
@@ -1633,10 +1655,14 @@ function regenerateDraftFromTask(task: TaskDetail): RegenerateDraft {
     },
     videoConfig: task.videoConfig ?? emptyVideoConfig,
     shots: task.shots ?? [],
-    imageGroups: task.scoredImageGroups ?? [],
-    videoGroups: task.scoredVideoGroups ?? [],
-    selectedImages: Object.fromEntries((task.selectedImages ?? []).map((item) => [item.shotId, item.image.assetId])),
-    selectedVideos: Object.fromEntries((task.selectedVideos ?? []).map((item) => [item.shotId, item.video.assetId]))
+    imageGroups: (task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? [],
+    videoGroups: (task.scoredVideoGroups?.length ? task.scoredVideoGroups : task.videoGroups) ?? [],
+    selectedImages: Object.keys(Object.fromEntries((task.selectedImages ?? []).map((item) => [item.shotId, item.image.assetId]))).length > 0
+      ? Object.fromEntries((task.selectedImages ?? []).map((item) => [item.shotId, item.image.assetId]))
+      : fallbackSelectedImages(task.imageGroups ?? [], task.scoredImageGroups ?? []),
+    selectedVideos: Object.keys(Object.fromEntries((task.selectedVideos ?? []).map((item) => [item.shotId, item.video.assetId]))).length > 0
+      ? Object.fromEntries((task.selectedVideos ?? []).map((item) => [item.shotId, item.video.assetId]))
+      : fallbackSelectedVideos(task.videoGroups ?? [], task.scoredVideoGroups ?? [])
   };
 }
 

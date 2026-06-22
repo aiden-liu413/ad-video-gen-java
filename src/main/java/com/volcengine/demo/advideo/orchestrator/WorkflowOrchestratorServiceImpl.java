@@ -242,6 +242,15 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         context.setSelectedImages(pickBestImages(context.getScoredImageGroups()));
                         saveContext(context);
                     } else {
+                        context.setSelectedImages(pickFirstImages(context.getImageGroups()));
+                        saveContext(context);
+                    }
+                }
+                if (isEmpty(context.getSelectedImages())) {
+                    if (request.imageScoringEnabledValue()) {
+                        markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
+                        return;
+                    } else {
                         markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
                         return;
                     }
@@ -280,9 +289,13 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         context.setSelectedVideos(pickBestVideos(context.getScoredVideoGroups()));
                         saveContext(context);
                     } else {
-                        markWaitingReview(taskId, TaskStage.VIDEO_GENERATING);
-                        return;
+                        context.setSelectedVideos(pickFirstVideos(context.getVideoGroups()));
+                        saveContext(context);
                     }
+                }
+                if (isEmpty(context.getSelectedVideos())) {
+                    markWaitingReview(taskId, TaskStage.VIDEO_GENERATING);
+                    return;
                 }
                 markStage(taskId, TaskStage.FINAL_COMPOSING);
                 context.setFinalVideo(composeFinalVideo(taskId, request, context.getVideoConfig(), context.getSelectedVideos()));
@@ -794,6 +807,17 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 .toList();
     }
 
+    private List<SelectedImage> pickFirstImages(List<ShotImageGroup> imageGroups) {
+        return imageGroups.stream()
+                .filter(group -> !isEmpty(group.images()))
+                .map(group -> {
+                    ImageCandidate first = group.images().get(0);
+                    ImageCandidate selected = new ImageCandidate(first.assetId(), first.shotId(), first.id(), first.url(), first.score(), first.reason(), true);
+                    return new SelectedImage(group.shotId(), group.duration(), selected, group.prompt(), group.action(), group.words());
+                })
+                .toList();
+    }
+
     private List<ShotVideoGroup> generateVideos(CreateVideoTaskRequest request, VideoConfig config, List<SelectedImage> selectedImages) {
         log.info("Generate video groups concurrently, selectedImageCount={}, videoCountPerShot={}", selectedImages.size(), request.videoCount());
         return awaitAll(selectedImages.stream()
@@ -980,6 +1004,17 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                                     .max(Comparator.comparing(video -> valueOrZero(video.score())))
                                     .orElseThrow());
                     VideoCandidate selected = new VideoCandidate(chosen.assetId(), chosen.shotId(), chosen.id(), chosen.url(), chosen.score(), chosen.reason(), true);
+                    return new SelectedVideo(group.shotId(), group.duration(), selected, group.words(), group.action());
+                })
+                .toList();
+    }
+
+    private List<SelectedVideo> pickFirstVideos(List<ShotVideoGroup> videoGroups) {
+        return videoGroups.stream()
+                .filter(group -> !isEmpty(group.videos()))
+                .map(group -> {
+                    VideoCandidate first = group.videos().get(0);
+                    VideoCandidate selected = new VideoCandidate(first.assetId(), first.shotId(), first.id(), first.url(), first.score(), first.reason(), true);
                     return new SelectedVideo(group.shotId(), group.duration(), selected, group.words(), group.action());
                 })
                 .toList();
