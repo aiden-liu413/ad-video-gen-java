@@ -1547,6 +1547,7 @@ function RegenerateControls({
                       </div>
                       <div className="regen-video-shot-body">
                         <div className="regen-video-shot-editor">
+                          <label>分镜视频时长（秒）<input type="number" min={1} max={120} value={group.duration ?? 5} onChange={(event) => updateImageGroup(group.shotId, { duration: Number(event.target.value || 5) })} /></label>
                           <label>视频画面提示<textarea value={group.prompt} onChange={(event) => updateImageGroup(group.shotId, { prompt: event.target.value })} /></label>
                           <label>镜头动作<input value={group.action} onChange={(event) => updateImageGroup(group.shotId, { action: event.target.value })} /></label>
                           <label>口播 / 字幕<textarea value={group.words} onChange={(event) => updateImageGroup(group.shotId, { words: event.target.value })} /></label>
