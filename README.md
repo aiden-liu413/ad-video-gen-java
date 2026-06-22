@@ -7,27 +7,32 @@ Java/Spring Boot 版本的广告视频生成 Demo，按 `volcengine/ai-app-lab/d
 - LLM：`Doubao-Seed-1.6`，负责理解用户需求、页面素材和 Agent 推理
 - 图像模型：`Doubao-Seedream 4.5 pro`，负责文生图 / 参考图生图
 - 视频模型：`Doubao-Seedance 1.0 pro`，负责图文生视频
+- 商品图广告流程：从商品图片 + 文本需求出发，依次完成营销策划、分镜脚本、图片候选、视频候选和最终合成
+- 视频拆解广告流程：从本地视频或视频 URL 出发，先做视频理解与分镜总结，再进入图片候选、分镜视频和最终广告合成
 - 市场分析 Agent：生成目标人群、卖点、关键词和创意策略
 - 导演 Agent：生成短视频标题、脚本和分镜提示词
+- 视频理解 Agent：根据上传视频总结固定结构的分镜脚本
 - 评估 Agent：输出评分、优势、风险和优化建议
 - Multimedia Agent：先调用 Seedream 生成分镜图，再调用 Seedance 生成视频
 - Release Agent：生成发布文案、话题标签和短链
 - 文档版任务状态机：`video_task` + `video_task_context` 持久化保存任务状态和上下文
 - 候选素材机制：每个分镜可生成多张候选图、多段候选视频，并支持人工选择
+- 评分开关：创建任务时可分别控制“图片评分”“视频评分”，关闭后默认不自动选材，等待人工确认
+- 自动确认开关：开启后，当前节点满足自动推进条件时会直接进入下一步；关闭后始终停在待审核态
 - 本地 FFmpeg 合成：最终视频落盘到 `./data/final-videos`，通过 `/final-videos/**` 访问，不使用 TOS 存储
-- 前端工作台：创建任务、启动任务、查看阶段产物、人工选择素材、从指定阶段重新生成
+- 前端工作台：创建任务、切换两类工作流、查看历史任务、编辑阶段产物、人工选择素材、从指定阶段重新生成
 
 ## Prompt 对齐
 
-项目已将原 Python 实现中的 5 个 `prompt.py` 原样复制到 `src/main/resources/prompts`：
+项目中的提示词已统一迁移为 Markdown 资源，位于 `src/main/resources/prompts`：
 
-- `market-agent/prompt.py`
-- `director-agent/prompt.py`
-- `evaluate-agent/prompt.py`
-- `release-agent/prompt.py`
-- `multimedia-agent/prompt.py`
+- `market-agent/prompt.md`
+- `director-agent/prompt.md`
+- `video-storyboard-agent/prompt.md`
+- `evaluate-agent/prompt.md`
+- `release-agent/prompt.md`
 
-Java 代码通过 `PromptService` 解析这些文件里的 `PROMPT_XXX = """..."""` 常量，避免手工改写导致提示词与原项目不一致。
+`PromptService` 会按 `## PROMPT_XXX` 段落读取对应提示词正文。这样既保留了提示词的结构化组织，也避免把提示词硬编码散落在 Java 代码里。
 
 ## 启动
 
@@ -83,6 +88,22 @@ http://localhost:8002/
 本地开发仍可单独运行 Vite；正式打包和 Docker 部署时，前端由 Spring Boot
 直接托管，无需单独部署。
 
+### 创建任务页
+
+- 左侧展示当前项目的核心流程设计图和理念说明
+- 中间输入区顶部可切换两类工作流：`商品图生成` / `视频解析生成`
+- 右侧为生成配置，包括目标平台、时长、比例、风格、评分开关和自动确认开关
+- 商品图流程支持本地图片上传或图片链接输入
+- 视频拆解流程支持本地视频上传或视频 URL 输入
+
+### 审核与重燃
+
+- 每个阶段的产物都可以在工作台查看
+- 营销策划、分镜脚本支持在线编辑后直接生效
+- 图片候选、视频候选支持人工选择，也支持在启用评分时由模型先给出评分建议
+- “重燃”支持从指定阶段重新执行，并修改该阶段需要的输入参数
+- 历史任务可以再次打开查看，切换到已完成的旧节点查看之前的中间结果
+
 ## Docker 部署
 
 运行层使用精简的 Eclipse Temurin 17 UBI minimal 镜像。FFmpeg 不在镜像构建
@@ -127,7 +148,7 @@ H2 Console：http://localhost:48080/h2-console
 jdbc:h2:file:/app/data/db/ad-video-gen;MODE=MySQL
 ```
 
-工作台按设计文档中的状态机推进：
+工作台按设计文档中的状态机推进。商品图广告流程与视频拆解广告流程共用同一套主状态机，但前置理解节点的语义不同：
 
 ```text
 CREATED
@@ -141,7 +162,7 @@ CREATED
 -> COMPLETED
 ```
 
-用户可以在前端查看历史任务，并继续编辑历史任务。流程不会自动执行到下一步：每次点击“开始生成 / 进入下一步”只推进一个阶段，阶段产物生成后进入 `WAITING_REVIEW`，用户确认或编辑后再手动进入下一步。分镜脚本、图片评分、视频评分都支持 JSON 编辑保存；保存后会清空受影响的后续产物，避免后续素材和用户编辑不一致。
+用户可以在前端查看历史任务，并继续编辑历史任务。默认情况下，流程不会自动执行到下一步：每次点击“开始生成 / 进入下一步”只推进一个阶段，阶段产物生成后进入 `WAITING_REVIEW`，用户确认或编辑后再手动进入下一步；若创建任务时开启“自动确认”，满足条件的节点会自动推进。分镜脚本、图片评分、视频评分都支持编辑保存；保存后会清空受影响的后续产物，避免后续素材和用户编辑不一致。
 
 ## API
 
@@ -153,20 +174,73 @@ CREATED
 curl -X POST http://localhost:8080/api/video-tasks \
   -H 'Content-Type: application/json' \
   -d '{
+    "workflowType": "product_image_ad",
     "inputType": "product_image",
     "text": "参考商品图片，生成一条 15 秒带货广告视频。商品：玻璃水。卖点：去虫胶、无甲醇、去油膜。",
     "imageUrls": [
-      "data:image/jpeg;base64,..."
+      "https://example.com/product.jpg"
     ],
     "videoType": "商品展示视频",
     "platform": "抖音",
     "duration": 15,
     "aspectRatio": "9:16",
     "style": "真实生活方式、明亮、轻快",
+    "imageScoringEnabled": true,
+    "videoScoringEnabled": false,
+    "autoConfirmEnabled": false,
     "generateImageCount": 2,
     "generateVideoCount": 1
   }'
 ```
+
+视频拆解广告流程可先上传视频，再创建任务：
+
+```bash
+curl -X POST http://localhost:8080/api/video-tasks/upload-video \
+  -F 'file=@/absolute/path/to/source.mp4'
+```
+
+创建视频拆解任务：
+
+```bash
+curl -X POST http://localhost:8080/api/video-tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "workflowType": "video_storyboard_ad",
+    "inputType": "source_video",
+    "text": "请基于上传的视频素材总结分镜，并重制为一条适合小红书的广告视频。",
+    "sourceVideoFileId": "file_xxx",
+    "sourceVideoFileName": "source.mp4",
+    "videoType": "视频素材重制广告",
+    "platform": "小红书",
+    "duration": 15,
+    "aspectRatio": "9:16",
+    "style": "电影感",
+    "imageScoringEnabled": true,
+    "videoScoringEnabled": true,
+    "autoConfirmEnabled": false,
+    "generateImageCount": 4,
+    "generateVideoCount": 2
+  }'
+```
+
+`CreateVideoTaskRequest` 关键字段说明：
+
+- `workflowType`
+  - `product_image_ad`：商品图生成广告
+  - `video_storyboard_ad`：视频解析生成广告
+- `inputType`
+  - `product_image`：商品图流程
+  - `source_video`：视频拆解流程
+- `imageScoringEnabled`
+  - `true`：自动对候选图片评分
+  - `false`：不评分，等待人工选择
+- `videoScoringEnabled`
+  - `true`：自动对候选视频评分
+  - `false`：不评分，等待人工选择
+- `autoConfirmEnabled`
+  - `true`：节点满足条件时自动推进
+  - `false`：每一步都停在待审核态
 
 启动任务：
 
