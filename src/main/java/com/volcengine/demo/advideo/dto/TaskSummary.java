@@ -6,6 +6,7 @@ public record TaskSummary(
         String taskId,
         String status,
         String currentStep,
+        String workflowType,
         String productName,
         Instant createdAt,
         Instant updatedAt

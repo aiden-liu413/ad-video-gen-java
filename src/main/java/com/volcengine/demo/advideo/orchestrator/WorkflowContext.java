@@ -15,6 +15,7 @@ public class WorkflowContext {
 
     private String taskId;
     private VideoConfig videoConfig;
+    private String sourceStoryboardTitle;
     private List<Shot> shots = new ArrayList<>();
     private List<ShotImageGroup> imageGroups = new ArrayList<>();
     private List<ShotImageGroup> scoredImageGroups = new ArrayList<>();
@@ -38,6 +39,14 @@ public class WorkflowContext {
 
     public void setVideoConfig(VideoConfig videoConfig) {
         this.videoConfig = videoConfig;
+    }
+
+    public String getSourceStoryboardTitle() {
+        return sourceStoryboardTitle;
+    }
+
+    public void setSourceStoryboardTitle(String sourceStoryboardTitle) {
+        this.sourceStoryboardTitle = sourceStoryboardTitle;
     }
 
     public List<Shot> getShots() {

@@ -130,10 +130,16 @@ type FinalVideo = {
   selectedVideos: SelectedVideo[];
 };
 
+type WorkflowType = "product_image_ad" | "video_storyboard_ad";
+
 type TaskRequest = {
-  inputType: "product_image";
+  workflowType: WorkflowType;
+  inputType: "product_image" | "source_video";
   text?: string;
   imageUrls?: string[];
+  sourceVideoUrl?: string;
+  sourceVideoFileId?: string;
+  sourceVideoFileName?: string;
   videoType?: string;
   platform?: string;
   duration?: number;
@@ -158,6 +164,7 @@ type TaskDetail = {
   status: string;
   stage: TaskStage;
   progress: number;
+  workflowType: WorkflowType;
   request?: TaskRequest;
   videoConfig?: VideoConfig;
   shots: Shot[];
@@ -178,6 +185,7 @@ type TaskSummary = {
   taskId: string;
   status: string;
   currentStep: TaskStage;
+  workflowType: WorkflowType;
   productName: string;
   updatedAt: string;
 };
@@ -213,9 +221,13 @@ type VideoScoreDraftGroup = {
 };
 
 type FormState = {
-  inputType: "product_image";
+  workflowType: WorkflowType;
+  inputType: "product_image" | "source_video";
   text: string;
   imageUrls: string;
+  sourceVideoUrl: string;
+  sourceVideoFileId: string;
+  sourceVideoFileName: string;
   videoType: string;
   platform: string;
   duration: string;
@@ -257,9 +269,13 @@ type StageViewProps = WorkflowViewProps & {
 };
 
 const initialForm: FormState = {
+  workflowType: "product_image_ad",
   inputType: "product_image",
   text: "参考上传的商品图片，生成一条 15 秒带货广告视频。商品：卖点：",
   imageUrls: "",
+  sourceVideoUrl: "",
+  sourceVideoFileId: "",
+  sourceVideoFileName: "",
   videoType: "商品展示视频",
   platform: "douyin",
   duration: "15",
@@ -300,9 +316,13 @@ const emptyVideoConfig: VideoConfig = {
 
 const emptyRegenerateDraft: RegenerateDraft = {
   taskInput: {
+    workflowType: "product_image_ad",
     inputType: "product_image",
     text: "",
     imageUrls: [],
+    sourceVideoUrl: "",
+    sourceVideoFileId: "",
+    sourceVideoFileName: "",
     videoType: "商品展示视频",
     platform: "douyin",
     duration: 15,
@@ -329,9 +349,15 @@ const stages: Array<{ stage: TaskStage; label: string; icon: React.ReactNode }> 
   { stage: "COMPLETED", label: "完成", icon: <CheckCircle2 size={16} /> }
 ];
 
+const workflowOptions: Array<{ value: WorkflowType; label: string; description: string }> = [
+  { value: "product_image_ad", label: "商品图生成广告", description: "从商品图片和文字需求出发，先做营销策划再生成广告。" },
+  { value: "video_storyboard_ad", label: "视频素材拆解生成广告", description: "从视频素材总结分镜，再生成图片候选、分镜视频和最终广告。" }
+];
+
 function App() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [taskId, setTaskId] = useState("");
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
@@ -402,16 +428,24 @@ function App() {
     setMessage("");
     try {
       const imageUrls = await prepareImageUrls();
-      if (imageUrls.length === 0) {
+      const videoSource = await prepareVideoSource();
+      if (form.workflowType === "product_image_ad" && imageUrls.length === 0) {
         throw new Error("请上传本地产品图片，或输入至少一个图片链接");
+      }
+      if (form.workflowType === "video_storyboard_ad" && !videoSource.sourceVideoUrl && !videoSource.sourceVideoFileId) {
+        throw new Error("请上传本地视频文件，或输入视频链接");
       }
       const response = await fetch(`${API_BASE}/api/video-tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          inputType: "product_image",
+          workflowType: form.workflowType,
+          inputType: form.workflowType === "video_storyboard_ad" ? "source_video" : "product_image",
           text: form.text,
           imageUrls,
+          sourceVideoUrl: videoSource.sourceVideoUrl,
+          sourceVideoFileId: videoSource.sourceVideoFileId,
+          sourceVideoFileName: videoSource.sourceVideoFileName,
           videoType: form.videoType,
           platform: form.platform,
           duration: Number(form.duration || 15),
@@ -439,6 +473,37 @@ function App() {
     );
     if (!imageFile) return manual;
     return [await fileToJpegDataUrl(imageFile), ...manual];
+  }
+
+  async function prepareVideoSource() {
+    const manualUrl = form.sourceVideoUrl.trim();
+    if (!videoFile) {
+      return {
+        sourceVideoUrl: manualUrl,
+        sourceVideoFileId: form.sourceVideoFileId,
+        sourceVideoFileName: form.sourceVideoFileName
+      };
+    }
+    const formData = new FormData();
+    formData.append("file", videoFile);
+    const response = await fetch(`${API_BASE}/api/video-tasks/upload-video`, {
+      method: "POST",
+      body: formData
+    });
+    const body = (await response.json()) as ApiResponse<{ fileId: string; fileName: string }>;
+    if (!response.ok || body.code !== 0) {
+      throw new Error(body.message || response.statusText);
+    }
+    setForm((previous) => ({
+      ...previous,
+      sourceVideoFileId: body.data.fileId,
+      sourceVideoFileName: body.data.fileName
+    }));
+    return {
+      sourceVideoUrl: "",
+      sourceVideoFileId: body.data.fileId,
+      sourceVideoFileName: body.data.fileName
+    };
   }
 
   async function postAction(path: string, successMessage: string, body?: unknown, options?: { waitForChange?: boolean }) {
@@ -542,6 +607,9 @@ function App() {
     setTask(null);
     setTaskId("");
     setMessage("");
+    setImageFile(null);
+    setVideoFile(null);
+    setForm(initialForm);
   }
 
   return (
@@ -550,15 +618,17 @@ function App() {
       <Sidebar tasks={tasks} activeTaskId={taskId} onSelectTask={setTaskId} />
       <main className="workspace">
         {!task && (
-          <CreateTaskView
-            form={form}
-            setForm={setForm}
-            imageFile={imageFile}
-            setImageFile={setImageFile}
-            busy={busy}
-            message={message}
-            onSubmit={createTask}
-          />
+        <CreateTaskView
+          form={form}
+          setForm={setForm}
+          imageFile={imageFile}
+          setImageFile={setImageFile}
+          videoFile={videoFile}
+          setVideoFile={setVideoFile}
+          busy={busy}
+          message={message}
+          onSubmit={createTask}
+        />
         )}
         {task && (
           <WorkflowView
@@ -678,6 +748,8 @@ function CreateTaskView({
   setForm,
   imageFile,
   setImageFile,
+  videoFile,
+  setVideoFile,
   busy,
   message,
   onSubmit
@@ -686,6 +758,8 @@ function CreateTaskView({
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   imageFile: File | null;
   setImageFile: (file: File | null) => void;
+  videoFile: File | null;
+  setVideoFile: (file: File | null) => void;
   busy: boolean;
   message: string;
   onSubmit: (event: React.FormEvent) => void;
@@ -694,13 +768,16 @@ function CreateTaskView({
     <form className="create-layout" onSubmit={onSubmit}>
       <section className="hero-copy">
         <h2>初始化生成</h2>
-        <p>上传本地商品图片，或粘贴图片链接，再定义电影级输出的风格轨迹。</p>
+        <p>{form.workflowType === "video_storyboard_ad"
+          ? "上传视频素材或填写视频链接，先做视频理解分镜，再进入图片与分镜视频候选流程。"
+          : "上传本地商品图片，或粘贴图片链接，再定义电影级输出的风格轨迹。"}
+        </p>
         <div className="process-board" aria-label="核心流程设计图和理念">
           <div className="process-kicker">核心流程设计</div>
           <div className="process-line">
-            <ProcessStep icon={<UploadCloud size={18} />} title="素材输入" text="本地图片或图片链接作为商品视觉锚点。" />
-            <ProcessStep icon={<BarChart3 size={18} />} title="营销策划" text="LLM 提炼商品名称、目标人群、核心卖点和投放建议。" />
-            <ProcessStep icon={<FileText size={18} />} title="分镜脚本" text="把营销方案拆成可审核、可编辑的分镜片段。" />
+            <ProcessStep icon={<UploadCloud size={18} />} title="素材输入" text={form.workflowType === "video_storyboard_ad" ? "本地视频或视频链接作为分镜理解源，图片素材作为可选参考。" : "本地图片或图片链接作为商品视觉锚点。"} />
+            <ProcessStep icon={<BarChart3 size={18} />} title={form.workflowType === "video_storyboard_ad" ? "视频理解" : "营销策划"} text={form.workflowType === "video_storyboard_ad" ? "LLM 总结原视频的关键镜头并输出可编辑分镜。" : "LLM 提炼商品名称、目标人群、核心卖点和投放建议。"} />
+            <ProcessStep icon={<FileText size={18} />} title="分镜脚本" text={form.workflowType === "video_storyboard_ad" ? "基于视频素材总结得到固定结构的分镜片段。" : "把营销方案拆成可审核、可编辑的分镜片段。"} />
             <ProcessStep icon={<ImageIcon size={18} />} title="图片生成与评估" text="一次组图生成候选图，再由模型按分镜匹配度评分。" />
             <ProcessStep icon={<Video size={18} />} title="视频生成与评估" text="按分镜时长和比例生成片段，评分后选择最佳素材。" />
             <ProcessStep icon={<Archive size={18} />} title="最终合成" text="FFmpeg 串联合格片段，生成可预览的最终视频。" />
@@ -713,13 +790,52 @@ function CreateTaskView({
         </div>
       </section>
       <section className="input-card">
+        <div className="workflow-picker">
+          {workflowOptions.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className={form.workflowType === item.value ? "active" : ""}
+              onClick={() => setForm((previous) => ({
+                ...previous,
+                workflowType: item.value,
+                inputType: item.value === "video_storyboard_ad" ? "source_video" : "product_image",
+                videoType: item.value === "video_storyboard_ad" ? "视频素材重制广告" : "商品展示视频",
+                text: item.value === "video_storyboard_ad"
+                  ? "请基于上传的视频素材总结分镜，并重制为一条广告视频。"
+                  : previous.text
+              }))}
+            >
+              <strong>{item.label}</strong>
+              <span>{item.description}</span>
+            </button>
+          ))}
+        </div>
+        {form.workflowType === "video_storyboard_ad" && (
+          <>
+            <div className="source-title">
+              <Video size={20} />
+              <span>源视频素材</span>
+            </div>
+            <label className="upload-zone">
+              <UploadCloud size={42} />
+              <strong>{videoFile ? videoFile.name : (form.sourceVideoFileName || "拖拽源视频至此")}</strong>
+              <span>上传本地视频后将通过后端调用 Ark 文件上传接口，后续理解阶段使用素材 ID</span>
+              <input type="file" accept="video/*" onChange={(event) => setVideoFile(event.target.files?.[0] ?? null)} />
+            </label>
+            <label>
+              视频链接
+              <textarea value={form.sourceVideoUrl} onChange={(event) => setFormValue("sourceVideoUrl", event.target.value, setForm)} placeholder="输入可直接访问的视频 URL" />
+            </label>
+          </>
+        )}
         <div className="source-title">
           <ImageIcon size={20} />
-          <span>产品图片</span>
+          <span>{form.workflowType === "video_storyboard_ad" ? "参考图片素材（可选）" : "产品图片"}</span>
         </div>
         <label className="upload-zone">
           <UploadCloud size={42} />
-          <strong>{imageFile ? imageFile.name : "拖拽产品图片至此"}</strong>
+          <strong>{imageFile ? imageFile.name : (form.workflowType === "video_storyboard_ad" ? "拖拽参考图片至此" : "拖拽产品图片至此")}</strong>
           <span>支持 PNG, JPG, WEBP 或 AVIF，上传后自动转为 JPEG</span>
           <input type="file" accept="image/*" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} />
         </label>
@@ -729,7 +845,7 @@ function CreateTaskView({
         </label>
         <label>
           产品或需求描述
-          <textarea value={form.text} onChange={(event) => setFormValue("text", event.target.value, setForm)} placeholder="描述视觉美学、灯光、运动行为和核心信息..." />
+          <textarea value={form.text} onChange={(event) => setFormValue("text", event.target.value, setForm)} placeholder={form.workflowType === "video_storyboard_ad" ? "描述你希望如何基于原视频重制广告，例如风格、时长、平台、保留哪些镜头..." : "描述视觉美学、灯光、运动行为和核心信息..."} />
         </label>
         <div className="metric-row">
           <label>
@@ -746,7 +862,7 @@ function CreateTaskView({
         <h3>生成配置</h3>
         <label>
           视频类型
-          <input value="商品展示视频" readOnly />
+          <input value={form.workflowType === "video_storyboard_ad" ? "视频素材重制广告" : "商品展示视频"} readOnly />
         </label>
         <div>
           <span className="field-label">目标平台</span>
@@ -822,6 +938,7 @@ function WorkflowView(props: WorkflowViewProps) {
   const { task } = props;
   const [viewStage, setViewStage] = useState<TaskStage>(canonicalStage(task.stage));
   const readOnly = canonicalStage(viewStage) !== canonicalStage(task.stage);
+  const workflowStages = stagesForWorkflow(task.workflowType);
 
   useEffect(() => {
     setViewStage(canonicalStage(task.stage));
@@ -832,20 +949,20 @@ function WorkflowView(props: WorkflowViewProps) {
       <section className="workflow-head">
         <div>
           <div className="headline-row">
-            <h2>{viewStage === "COMPLETED" ? finalTitle(task) : stageText(viewStage)}</h2>
+            <h2>{viewStage === "COMPLETED" ? finalTitle(task) : stageText(task.workflowType, viewStage)}</h2>
             <span className={`status ${task.status.toLowerCase()}`}>{statusText(task.status)}</span>
           </div>
-          <p>任务 ID: <span>{task.taskId}</span> · 当前流程：{stageText(task.stage)} · 正在查看：{stageText(viewStage)}</p>
+          <p>任务 ID: <span>{task.taskId}</span> · 当前流程：{stageText(task.workflowType, task.stage)} · 正在查看：{stageText(task.workflowType, viewStage)}</p>
         </div>
         <div className="workflow-actions">
           <button onClick={props.onSaveEdits} disabled={props.busy || readOnly || !canEdit(task.stage)}>保存草稿</button>
           <button className="primary" onClick={props.onAdvance} disabled={props.busy || task.status === "RUNNING" || task.status === "SUCCESS"}>
             {props.busy ? <Loader2 className="spin" size={18} /> : <Rocket size={18} />}
-            {nextLabel(task.stage)}
+            {nextLabel(task.workflowType, task.stage)}
           </button>
         </div>
       </section>
-      <StageStepper current={task.stage} viewing={viewStage} status={task.status} task={task} onSelect={setViewStage} />
+      <StageStepper current={task.stage} viewing={viewStage} status={task.status} task={task} onSelect={setViewStage} items={workflowStages} />
       {props.message && <div className="message">{props.message}</div>}
       {hasTaskError(task) && <ErrorPanel task={task} />}
       {readOnly && <div className="message">当前正在查看历史节点内容，编辑和保存操作只在当前流程节点开放。</div>}
@@ -862,7 +979,7 @@ function WorkflowView(props: WorkflowViewProps) {
 function ErrorPanel({ task }: { task: TaskDetail }) {
   const errorText = [
     `任务 ID: ${task.taskId}`,
-    `失败节点: ${stageText(task.stage)}`,
+    `失败节点: ${stageText(task.workflowType, task.stage)}`,
     task.errorCode ? `错误码: ${task.errorCode}` : "",
     `错误信息: ${task.errorMessage ?? "未知错误"}`
   ].filter(Boolean).join("\n");
@@ -887,20 +1004,22 @@ function StageStepper({
   viewing,
   status,
   task,
-  onSelect
+  onSelect,
+  items
 }: {
   current: TaskStage;
   viewing: TaskStage;
   status: string;
   task: TaskDetail;
   onSelect: (stage: TaskStage) => void;
+  items: Array<{ stage: TaskStage; label: string; icon: React.ReactNode }>;
 }) {
   return (
     <div className="stage-stepper">
-      {stages.map((item) => {
+      {items.map((item) => {
         const active = item.stage === canonicalStage(current);
         const viewingStage = item.stage === canonicalStage(viewing);
-        const done = stageIndex(item.stage) < stageIndex(current) || current === "COMPLETED";
+        const done = stageIndex(task.workflowType, item.stage) < stageIndex(task.workflowType, current) || current === "COMPLETED";
         const available = isStageAvailable(task, item.stage);
         return (
           <button
@@ -924,11 +1043,21 @@ function StageContent(props: StageViewProps) {
   const { task, viewStage } = props;
   if (!isStageAvailable(task, viewStage)) return <div className="empty-state">该节点还没有生成内容。</div>;
   if (viewStage === "MARKET_PLANNING") return <MarketingStage task={task} />;
-  if (viewStage === "SHOT_SCRIPT_GENERATING") return <ShotStage {...props} />;
+  if (viewStage === "SHOT_SCRIPT_GENERATING") {
+    return task.workflowType === "video_storyboard_ad"
+      ? <VideoUnderstandingStage {...props} />
+      : <ShotStage {...props} />;
+  }
   if (isImageReviewStage(viewStage)) return hasScoredImages(task) ? <ImageEvaluateStage {...props} /> : <ImageGenerateStage {...props} />;
   if (isVideoReviewStage(viewStage)) return hasScoredVideos(task) ? <VideoEvaluateStage {...props} /> : <VideoGenerateStage {...props} />;
   if (viewStage === "FINAL_COMPOSING" || viewStage === "COMPLETED") return <FinalStage task={task} />;
-  return <div className="empty-state">任务已创建，点击进入下一步开始营销策划。</div>;
+  return (
+    <div className="empty-state">
+      {task.workflowType === "video_storyboard_ad"
+        ? "任务已创建，点击进入下一步开始视频理解与分镜。"
+        : "任务已创建，点击进入下一步开始营销策划。"}
+    </div>
+  );
 }
 
 function MarketingStage({ task }: { task: TaskDetail }) {
@@ -980,12 +1109,44 @@ function ShotStage({ task, editableShots, setEditableShots, readOnly }: StageVie
       <aside className="panel-card">
         <h3>编辑范围</h3>
         <div className="summary-list">
-          <span>当前流程<b>{stageText(task.stage)}</b></span>
+          <span>当前流程<b>{stageText(task.workflowType, task.stage)}</b></span>
           <span>任务状态<b>{statusText(task.status)}</b></span>
           <span>{readOnly ? "查看模式" : "可编辑字段"}<b>{readOnly ? "历史节点只读" : "prompt / action / words"}</b></span>
         </div>
         <p className="hint">保存后会保留分镜 ID、顺序、时长和参考素材，只用修改后的提示词重新生成后续图片和视频。</p>
       </aside>
+    </div>
+  );
+}
+
+function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOnly }: StageViewProps) {
+  function updateShot(shotId: string, key: "prompt" | "action" | "words", value: string) {
+    if (readOnly) return;
+    setEditableShots(editableShots.map((shot) => shot.shotId === shotId ? { ...shot, [key]: value } : shot));
+  }
+
+  return (
+    <div className="two-pane">
+      <section className="panel-card marketing-plan-card">
+        <h3>视频理解结果</h3>
+        <label>素材标题<input readOnly value={task.videoConfig?.productInfo?.name ?? task.request?.sourceVideoFileName ?? "视频素材"} /></label>
+        <label>源视频文件 ID<input readOnly value={task.request?.sourceVideoFileId ?? "未上传本地文件"} /></label>
+        <label>源视频链接<textarea readOnly value={task.request?.sourceVideoUrl ?? ""} /></label>
+        <label>理解说明<textarea className="marketing-advice" readOnly value={task.videoConfig?.videoAdvice ?? ""} /></label>
+      </section>
+      <section className="panel-card">
+        <div className="section-head"><h3>视频总结分镜</h3><span>{editableShots.length} 个分镜</span></div>
+        <div className="shot-list">
+          {editableShots.map((shot) => (
+            <article className="shot-card" key={shot.shotId}>
+              <header><b>{shot.shotId}</b><span>时长: {shot.duration}s</span></header>
+              <label>画面总结<textarea readOnly={readOnly} value={shot.prompt ?? ""} onChange={(event) => updateShot(shot.shotId, "prompt", event.target.value)} /></label>
+              <label>镜头动作<input readOnly={readOnly} value={shot.action ?? ""} onChange={(event) => updateShot(shot.shotId, "action", event.target.value)} /></label>
+              <label>口播 / 字幕<textarea readOnly={readOnly} value={shot.words ?? ""} onChange={(event) => updateShot(shot.shotId, "words", event.target.value)} /></label>
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -1153,17 +1314,31 @@ function RegenerateControls({
     ...regenerateDraft,
     shots: regenerateDraft.shots.map((shot) => shot.shotId === shotId ? { ...shot, ...patch } : shot)
   });
+  const stageOptions = task.workflowType === "video_storyboard_ad"
+    ? [
+      { value: "SHOT_SCRIPT_GENERATING" as TaskStage, label: "视频理解与分镜" },
+      { value: "IMAGE_GENERATING" as TaskStage, label: "图片生成与评估" },
+      { value: "VIDEO_GENERATING" as TaskStage, label: "视频生成与评估" },
+      { value: "FINAL_COMPOSING" as TaskStage, label: "最终合成" }
+    ]
+    : [
+      { value: "MARKET_PLANNING" as TaskStage, label: "营销策划" },
+      { value: "SHOT_SCRIPT_GENERATING" as TaskStage, label: "分镜脚本" },
+      { value: "IMAGE_GENERATING" as TaskStage, label: "图片生成与评估" },
+      { value: "VIDEO_GENERATING" as TaskStage, label: "视频生成与评估" },
+      { value: "FINAL_COMPOSING" as TaskStage, label: "最终合成" }
+    ];
   return (
     <div className="regen">
       <div className="regen-toolbar">
         <label className="regen-control">
           <span>重燃阶段</span>
           <select value={regenerateStage} onChange={(event) => setRegenerateStage(event.target.value as TaskStage)}>
-            <option value="MARKET_PLANNING">营销策划</option>
-            <option value="SHOT_SCRIPT_GENERATING">分镜脚本</option>
-            <option value="IMAGE_GENERATING">图片生成与评估</option>
-            <option value="VIDEO_GENERATING">视频生成与评估</option>
-            <option value="FINAL_COMPOSING">最终合成</option>
+            {stageOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="regen-control">
@@ -1201,12 +1376,22 @@ function RegenerateControls({
         {regenerateStage === "SHOT_SCRIPT_GENERATING" && (
           <>
             <div className="metric-row">
-              <label>商品名称<input value={regenerateDraft.videoConfig.productInfo?.name ?? ""} onChange={(event) => updateProductInfo({ name: event.target.value })} /></label>
+              <label>{task.workflowType === "video_storyboard_ad" ? "素材标题" : "商品名称"}<input value={regenerateDraft.videoConfig.productInfo?.name ?? ""} onChange={(event) => updateProductInfo({ name: event.target.value })} /></label>
               <label>视频类型<input value={regenerateDraft.videoConfig.videoType ?? "商品展示视频"} onChange={(event) => updateVideoConfig({ videoType: event.target.value })} /></label>
             </div>
-            <label>目标人群<textarea value={regenerateDraft.videoConfig.targetAudience ?? ""} onChange={(event) => updateVideoConfig({ targetAudience: event.target.value })} /></label>
-            <label>核心卖点<textarea value={regenerateDraft.videoConfig.productInfo?.sellingPoint ?? ""} onChange={(event) => updateProductInfo({ sellingPoint: event.target.value })} /></label>
-            <label>创意策略<textarea value={regenerateDraft.videoConfig.videoAdvice ?? ""} onChange={(event) => updateVideoConfig({ videoAdvice: event.target.value })} /></label>
+            {task.workflowType === "video_storyboard_ad" ? (
+              <>
+                <label>源视频文件 ID<input value={regenerateDraft.taskInput.sourceVideoFileId ?? ""} onChange={(event) => updateTaskInput({ sourceVideoFileId: event.target.value })} /></label>
+                <label>源视频链接<textarea value={regenerateDraft.taskInput.sourceVideoUrl ?? ""} onChange={(event) => updateTaskInput({ sourceVideoUrl: event.target.value })} /></label>
+                <label>理解说明<textarea value={regenerateDraft.videoConfig.videoAdvice ?? ""} onChange={(event) => updateVideoConfig({ videoAdvice: event.target.value })} /></label>
+              </>
+            ) : (
+              <>
+                <label>目标人群<textarea value={regenerateDraft.videoConfig.targetAudience ?? ""} onChange={(event) => updateVideoConfig({ targetAudience: event.target.value })} /></label>
+                <label>核心卖点<textarea value={regenerateDraft.videoConfig.productInfo?.sellingPoint ?? ""} onChange={(event) => updateProductInfo({ sellingPoint: event.target.value })} /></label>
+                <label>创意策略<textarea value={regenerateDraft.videoConfig.videoAdvice ?? ""} onChange={(event) => updateVideoConfig({ videoAdvice: event.target.value })} /></label>
+              </>
+            )}
           </>
         )}
         {regenerateStage === "IMAGE_GENERATING" && (
@@ -1252,9 +1437,13 @@ function setFormValue(key: keyof FormState, value: string, setForm: React.Dispat
 function regenerateDraftFromTask(task: TaskDetail): RegenerateDraft {
   return {
     taskInput: {
-      inputType: "product_image",
+      workflowType: task.workflowType ?? "product_image_ad",
+      inputType: task.request?.inputType ?? "product_image",
       text: task.request?.text ?? "",
       imageUrls: task.request?.imageUrls ?? task.videoConfig?.productInfo?.resources ?? [],
+      sourceVideoUrl: task.request?.sourceVideoUrl ?? "",
+      sourceVideoFileId: task.request?.sourceVideoFileId ?? "",
+      sourceVideoFileName: task.request?.sourceVideoFileName ?? "",
       videoType: task.request?.videoType ?? "商品展示视频",
       platform: task.request?.platform ?? task.videoConfig?.platform ?? "douyin",
       duration: task.request?.duration ?? task.videoConfig?.duration ?? 15,
@@ -1496,8 +1685,22 @@ function isRenderableVideo(url?: string) {
   return Boolean(url && (url.startsWith("http") || url.startsWith("/") || url.startsWith("data:video/")));
 }
 
-function stageIndex(stage: TaskStage) {
-  return stages.findIndex((item) => item.stage === canonicalStage(stage));
+function stagesForWorkflow(workflowType: WorkflowType) {
+  if (workflowType === "video_storyboard_ad") {
+    return [
+      { stage: "CREATED" as TaskStage, label: "创建", icon: <Check size={16} /> },
+      { stage: "SHOT_SCRIPT_GENERATING" as TaskStage, label: "视频理解与分镜", icon: <FileText size={16} /> },
+      { stage: "IMAGE_GENERATING" as TaskStage, label: "图片生成与评估", icon: <ImageIcon size={16} /> },
+      { stage: "VIDEO_GENERATING" as TaskStage, label: "视频生成与评估", icon: <Video size={16} /> },
+      { stage: "FINAL_COMPOSING" as TaskStage, label: "最终合成", icon: <Archive size={16} /> },
+      { stage: "COMPLETED" as TaskStage, label: "完成", icon: <CheckCircle2 size={16} /> }
+    ];
+  }
+  return stages;
+}
+
+function stageIndex(workflowType: WorkflowType, stage: TaskStage) {
+  return stagesForWorkflow(workflowType).findIndex((item) => item.stage === canonicalStage(stage));
 }
 
 function isStageAvailable(task: TaskDetail, stage: TaskStage) {
@@ -1517,11 +1720,12 @@ function canEdit(stage: TaskStage) {
   return stage === "SHOT_SCRIPT_GENERATING" || isImageReviewStage(stage) || isVideoReviewStage(stage);
 }
 
-function nextLabel(stage: TaskStage) {
+function nextLabel(workflowType: WorkflowType, stage: TaskStage) {
   if (stage === "CREATED") return "开始生成";
   if (stage === "COMPLETED") return "已完成";
-  const index = stageIndex(stage);
-  const next = stages[index + 1];
+  const items = stagesForWorkflow(workflowType);
+  const index = stageIndex(workflowType, stage);
+  const next = items[index + 1];
   return next ? `进入下一步：${next.label}` : "进入下一步";
 }
 
@@ -1549,9 +1753,9 @@ function statusText(value: string) {
   return map[value] ?? value;
 }
 
-function stageText(value: TaskStage) {
+function stageText(workflowType: WorkflowType, value: TaskStage) {
   if (value === "FAILED") return "失败";
-  const found = stages.find((item) => item.stage === canonicalStage(value));
+  const found = stagesForWorkflow(workflowType).find((item) => item.stage === canonicalStage(value));
   return found?.label ?? value;
 }
 

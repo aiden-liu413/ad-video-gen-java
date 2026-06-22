@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Component
@@ -30,12 +31,20 @@ public class ArkChatClient {
     }
 
     public String complete(String systemPrompt, String userPrompt, List<String> imageUrls) {
+        List<MediaInput> mediaInputs = imageUrls == null ? List.of() : imageUrls.stream()
+                .filter(StringUtils::hasText)
+                .map(MediaInput::imageUrl)
+                .toList();
+        return completeWithMedia(systemPrompt, userPrompt, mediaInputs);
+    }
+
+    public String completeWithMedia(String systemPrompt, String userPrompt, List<MediaInput> mediaInputs) {
         if (!StringUtils.hasText(properties.llm().apiKey())) {
             log.info("LLM api key missing, use local completion fallback, model={}", modelName());
             return localCompletion(systemPrompt, userPrompt);
         }
 
-        Object userContent = buildUserContent(userPrompt, imageUrls);
+        Object userContent = buildUserContent(userPrompt, mediaInputs);
         Map<String, Object> body = Map.of(
                 "model", modelName(),
                 "messages", List.of(
@@ -48,7 +57,7 @@ public class ArkChatClient {
             log.info("Call LLM chat completion, model={}, promptChars={}, imageUrlCount={}",
                     modelName(),
                     userPrompt == null ? 0 : userPrompt.length(),
-                    imageUrls == null ? 0 : imageUrls.size());
+                    mediaInputs == null ? 0 : mediaInputs.size());
             ArkResponse response = restClient.post()
                     .uri("/chat/completions")
                     .header("Authorization", "Bearer " + properties.llm().apiKey())
@@ -58,13 +67,13 @@ public class ArkChatClient {
             if (response != null && response.choices() != null && !response.choices().isEmpty()) {
                 log.info("LLM chat completion succeeded, model={}, imageUrlCount={}",
                         modelName(),
-                        imageUrls == null ? 0 : imageUrls.size());
+                        mediaInputs == null ? 0 : mediaInputs.size());
                 return response.choices().get(0).message().content();
             }
         } catch (RestClientResponseException ex) {
             log.error("LLM chat completion API failed, model={}, imageUrlCount={}, statusCode={}, responseBody={}",
                     modelName(),
-                    imageUrls == null ? 0 : imageUrls.size(),
+                    mediaInputs == null ? 0 : mediaInputs.size(),
                     ex.getStatusCode(),
                     ex.getResponseBodyAsString(),
                     ex);
@@ -72,7 +81,7 @@ public class ArkChatClient {
         } catch (RuntimeException ex) {
             log.error("LLM chat completion failed, use local fallback, model={}, imageUrlCount={}",
                     modelName(),
-                    imageUrls == null ? 0 : imageUrls.size(),
+                    mediaInputs == null ? 0 : mediaInputs.size(),
                     ex);
             return "LLM 调用失败，已使用本地兜底结果。错误：" + ex.getMessage();
         }
@@ -80,18 +89,16 @@ public class ArkChatClient {
         return localCompletion(systemPrompt, userPrompt);
     }
 
-    private Object buildUserContent(String userPrompt, List<String> imageUrls) {
-        if (imageUrls == null || imageUrls.isEmpty()) {
+    private Object buildUserContent(String userPrompt, List<MediaInput> mediaInputs) {
+        if (mediaInputs == null || mediaInputs.isEmpty()) {
             return userPrompt;
         }
         List<Map<String, Object>> content = new ArrayList<>();
         content.add(Map.of("type", "text", "text", valueOrEmpty(userPrompt)));
-        for (String imageUrl : imageUrls) {
-            if (StringUtils.hasText(imageUrl)) {
-                content.add(Map.of(
-                        "type", "image_url",
-                        "image_url", Map.of("url", imageUrl)
-                ));
+        for (MediaInput mediaInput : mediaInputs) {
+            Map<String, Object> part = mediaInput.toContentPart();
+            if (part != null && !part.isEmpty()) {
+                content.add(part);
             }
         }
         return content;
@@ -127,5 +134,40 @@ public class ArkChatClient {
     }
 
     public record Message(String content) {
+    }
+
+    public record MediaInput(String type, String url, String fileId) {
+
+        public static MediaInput imageUrl(String url) {
+            return new MediaInput("image_url", url, null);
+        }
+
+        public static MediaInput videoUrl(String url) {
+            return new MediaInput("video_url", url, null);
+        }
+
+        public static MediaInput videoFile(String fileId) {
+            return new MediaInput("video_url", null, fileId);
+        }
+
+        public Map<String, Object> toContentPart() {
+            if (!StringUtils.hasText(type)) {
+                return Map.of();
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            if (StringUtils.hasText(url)) {
+                payload.put("url", url);
+            }
+            if (StringUtils.hasText(fileId)) {
+                payload.put("file_id", fileId);
+            }
+            return payload.isEmpty()
+                    ? Map.of()
+                    : Map.of(typeKey(), type, type, payload);
+        }
+
+        private String typeKey() {
+            return "type";
+        }
     }
 }

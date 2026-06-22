@@ -5,9 +5,13 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 
 public record CreateVideoTaskRequest(
+        String workflowType,
         @NotBlank String inputType,
         String text,
         List<String> imageUrls,
+        String sourceVideoUrl,
+        String sourceVideoFileId,
+        String sourceVideoFileName,
         String videoType,
         String platform,
         Integer duration,
@@ -30,5 +34,9 @@ public record CreateVideoTaskRequest(
 
     public String aspectRatioValue() {
         return aspectRatio == null || aspectRatio.isBlank() ? "9:16" : aspectRatio;
+    }
+
+    public String workflowTypeValue() {
+        return workflowType == null || workflowType.isBlank() ? "product_image_ad" : workflowType;
     }
 }

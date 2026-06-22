@@ -24,6 +24,10 @@ public class PromptService {
         return get("prompts/director-agent/prompt.md", "PROMPT_STORYBOARD_AGENT");
     }
 
+    public String videoStoryboardAgent() {
+        return get("prompts/video-storyboard-agent/prompt.md", "PROMPT_VIDEO_STORYBOARD_AGENT");
+    }
+
     public String evaluateAgent() {
         return get("prompts/evaluate-agent/prompt.md", "PROMPT_EVALUATE_AGENT");
     }

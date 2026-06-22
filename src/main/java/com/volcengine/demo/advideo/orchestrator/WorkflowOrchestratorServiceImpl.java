@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.volcengine.demo.advideo.agent.DirectorAgent;
 import com.volcengine.demo.advideo.agent.MarketAgent;
 import com.volcengine.demo.advideo.agent.ReleaseAgent;
+import com.volcengine.demo.advideo.agent.VideoStoryboardAgent;
 import com.volcengine.demo.advideo.client.ArkChatClient;
 import com.volcengine.demo.advideo.client.SeedanceVideoClient;
 import com.volcengine.demo.advideo.client.SeedreamImageClient;
@@ -60,12 +61,15 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
 
     private static final Logger log = LoggerFactory.getLogger(WorkflowOrchestratorServiceImpl.class);
     private static final java.util.regex.Pattern JSON_BLOCK = java.util.regex.Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```");
+    private static final String WORKFLOW_PRODUCT_IMAGE_AD = "product_image_ad";
+    private static final String WORKFLOW_VIDEO_STORYBOARD_AD = "video_storyboard_ad";
 
     private final VideoTaskRepository taskRepository;
     private final VideoTaskContextRepository contextRepository;
     private final ObjectMapper objectMapper;
     private final MarketAgent marketAgent;
     private final DirectorAgent directorAgent;
+    private final VideoStoryboardAgent videoStoryboardAgent;
     private final SeedreamImageClient imageClient;
     private final SeedanceVideoClient videoClient;
     private final ReleaseAgent releaseAgent;
@@ -79,6 +83,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             ObjectMapper objectMapper,
             MarketAgent marketAgent,
             DirectorAgent directorAgent,
+            VideoStoryboardAgent videoStoryboardAgent,
             SeedreamImageClient imageClient,
             SeedanceVideoClient videoClient,
             ReleaseAgent releaseAgent,
@@ -91,6 +96,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         this.objectMapper = objectMapper;
         this.marketAgent = marketAgent;
         this.directorAgent = directorAgent;
+        this.videoStoryboardAgent = videoStoryboardAgent;
         this.imageClient = imageClient;
         this.videoClient = videoClient;
         this.releaseAgent = releaseAgent;
@@ -104,6 +110,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     public String createTask(CreateVideoTaskRequest request) {
         String taskId = "task_" + UUID.randomUUID().toString().replace("-", "");
         Instant now = Instant.now();
+        String workflowType = workflowType(request);
 
         VideoTaskEntity task = new VideoTaskEntity();
         task.setTaskId(taskId);
@@ -131,7 +138,8 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         contextEntity.setUpdatedAt(now);
         contextRepository.save(contextEntity);
 
-        log.info("Created video task, taskId={}, inputType={}, videoType={}", taskId, request.inputType(), task.getVideoType());
+        log.info("Created video task, taskId={}, workflowType={}, inputType={}, videoType={}",
+                taskId, workflowType, request.inputType(), task.getVideoType());
         return taskId;
     }
 
@@ -164,8 +172,20 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         VideoTaskEntity task = taskRepository.findByTaskId(taskId).orElseThrow();
         CreateVideoTaskRequest request = requestFromTask(task);
         WorkflowContext context = loadContext(taskId);
+        String workflowType = workflowType(request);
         try {
-            if (context.getVideoConfig() == null) {
+            if (isVideoStoryboardWorkflow(workflowType) && isEmpty(context.getShots())) {
+                markStage(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
+                VideoStoryboardAgent.StoryboardSummary summary = videoStoryboardAgent.summarize(request);
+                context.setSourceStoryboardTitle(summary.title());
+                context.setVideoConfig(generateVideoConfigForVideoStoryboard(request, summary));
+                context.setShots(summary.shots());
+                saveContext(context);
+                markWaitingReview(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
+                return;
+            }
+
+            if (!isVideoStoryboardWorkflow(workflowType) && context.getVideoConfig() == null) {
                 markStage(taskId, TaskStage.MARKET_PLANNING);
                 context.setVideoConfig(generateVideoConfig(request));
                 saveContext(context);
@@ -173,7 +193,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 return;
             }
 
-            if (isEmpty(context.getShots())) {
+            if (!isVideoStoryboardWorkflow(workflowType) && isEmpty(context.getShots())) {
                 markStage(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
                 context.setShots(generateShots(request, context.getVideoConfig()));
                 saveContext(context);
@@ -317,9 +337,13 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             return current;
         }
         return new CreateVideoTaskRequest(
+                valueOrDefault(patch.workflowType(), current.workflowType()),
                 valueOrDefault(patch.inputType(), current.inputType()),
                 patch.text() == null ? current.text() : patch.text(),
                 patch.imageUrls() == null ? current.imageUrls() : patch.imageUrls(),
+                patch.sourceVideoUrl() == null ? current.sourceVideoUrl() : patch.sourceVideoUrl(),
+                patch.sourceVideoFileId() == null ? current.sourceVideoFileId() : patch.sourceVideoFileId(),
+                patch.sourceVideoFileName() == null ? current.sourceVideoFileName() : patch.sourceVideoFileName(),
                 patch.videoType() == null ? current.videoType() : patch.videoType(),
                 patch.platform() == null ? current.platform() : patch.platform(),
                 patch.duration() == null ? current.duration() : patch.duration(),
@@ -392,6 +416,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         task.getTaskId(),
                         task.getStatus(),
                         task.getStage(),
+                        workflowType(requestFromTask(task)),
                         task.getInputText(),
                         task.getCreatedAt(),
                         task.getUpdatedAt()
@@ -419,6 +444,33 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 request.durationValue(),
                 request.aspectRatioValue(),
                 insight.creativeStrategy()
+        );
+    }
+
+    private VideoConfig generateVideoConfigForVideoStoryboard(
+            CreateVideoTaskRequest request,
+            VideoStoryboardAgent.StoryboardSummary summary
+    ) {
+        ProductInfo productInfo = new ProductInfo(
+                valueOrDefault(summary.title(), fallbackVideoStoryboardName(request)),
+                valueOrDefault(request.text(), "基于视频素材总结分镜并重构广告"),
+                safeImageUrls(request.imageUrls()),
+                null,
+                null,
+                Map.of(
+                        "sourceVideoUrl", valueOrDefault(request.sourceVideoUrl(), ""),
+                        "sourceVideoFileId", valueOrDefault(request.sourceVideoFileId(), ""),
+                        "workflowType", workflowType(request)
+                )
+        );
+        return new VideoConfig(
+                valueOrDefault(request.videoType(), "视频素材重制广告"),
+                productInfo,
+                "",
+                valueOrDefault(request.platform(), "抖音"),
+                request.durationValue(),
+                request.aspectRatioValue(),
+                "基于用户提供的视频素材总结分镜脚本，再生成广告重制版本。"
         );
     }
 
@@ -1017,6 +1069,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 task.getStatus(),
                 task.getStage(),
                 task.getProgress(),
+                workflowType(requestFromTask(task)),
                 requestFromTask(task),
                 context.getVideoConfig(),
                 context.getShots(),
@@ -1043,9 +1096,13 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             }
         }
         return new CreateVideoTaskRequest(
+                WORKFLOW_PRODUCT_IMAGE_AD,
                 task.getInputType(),
                 task.getInputText(),
                 List.of(),
+                null,
+                null,
+                null,
                 task.getVideoType(),
                 task.getPlatform(),
                 task.getDuration(),
@@ -1081,6 +1138,24 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
 
     private String defaultPrompt() {
         return "参考上传的商品图片，生成一条带货广告视频。";
+    }
+
+    private String workflowType(CreateVideoTaskRequest request) {
+        return request == null ? WORKFLOW_PRODUCT_IMAGE_AD : request.workflowTypeValue();
+    }
+
+    private boolean isVideoStoryboardWorkflow(String workflowType) {
+        return WORKFLOW_VIDEO_STORYBOARD_AD.equals(workflowType);
+    }
+
+    private String fallbackVideoStoryboardName(CreateVideoTaskRequest request) {
+        if (StringUtils.hasText(request.sourceVideoFileName())) {
+            return request.sourceVideoFileName();
+        }
+        if (StringUtils.hasText(request.sourceVideoUrl())) {
+            return request.sourceVideoUrl();
+        }
+        return "视频素材分镜";
     }
 
     private String toJson(Object value) {
