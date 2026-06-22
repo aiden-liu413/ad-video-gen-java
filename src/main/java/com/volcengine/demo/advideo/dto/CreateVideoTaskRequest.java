@@ -9,6 +9,7 @@ public record CreateVideoTaskRequest(
         @NotBlank String inputType,
         String text,
         List<String> imageUrls,
+        List<String> imageFileIds,
         String sourceVideoUrl,
         String sourceVideoFileId,
         String sourceVideoFileName,

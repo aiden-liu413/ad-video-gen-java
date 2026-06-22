@@ -32,12 +32,14 @@ public class MarketAgent {
         String productName = productName(request);
         String productDescription = valueOrDefault(request.productDescription(), "用户希望生成商品广告视频");
         List<String> marketReferenceImages = marketReferenceImages(request.referenceImageUrls());
+        List<String> marketReferenceImageFileIds = marketReferenceImageFileIds(request.referenceImageFileIds());
         String prompt = """
                 请根据以下输入生成电商营销视频策划 JSON。
                 产品：%s
                 描述：%s
                 用户原始需求：%s
                 商品图片素材：%s
+                商品图片素材文件ID：%s
                 目标人群：%s
                 卖点：%s
                 请严格遵守系统提示词中的输出格式。
@@ -48,10 +50,13 @@ public class MarketAgent {
                 marketReferenceImages.isEmpty()
                         ? "未提供"
                         : marketReferenceImages,
+                marketReferenceImageFileIds.isEmpty()
+                        ? "未提供"
+                        : marketReferenceImageFileIds,
                 audience,
                 valueOrDefault(request.sellingPoints(), "未提供")
         );
-        String strategy = chatClient.complete(promptService.marketAgent(), prompt);
+        String strategy = chatClient.complete(promptService.marketAgent(), prompt, marketReferenceImages, marketReferenceImageFileIds);
         ParsedMarketInsight parsed = parseMarketInsight(strategy, productName, audience);
 
         return new MarketInsight(
@@ -146,6 +151,15 @@ public class MarketAgent {
         return referenceImageUrls.stream()
                 .filter(StringUtils::hasText)
                 .filter(url -> !url.startsWith("data:image/"))
+                .toList();
+    }
+
+    private List<String> marketReferenceImageFileIds(List<String> referenceImageFileIds) {
+        if (referenceImageFileIds == null || referenceImageFileIds.isEmpty()) {
+            return List.of();
+        }
+        return referenceImageFileIds.stream()
+                .filter(StringUtils::hasText)
                 .toList();
     }
 

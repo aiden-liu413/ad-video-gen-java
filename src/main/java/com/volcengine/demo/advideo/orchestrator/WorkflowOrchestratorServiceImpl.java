@@ -375,6 +375,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 valueOrDefault(patch.inputType(), current.inputType()),
                 patch.text() == null ? current.text() : patch.text(),
                 patch.imageUrls() == null ? current.imageUrls() : patch.imageUrls(),
+                patch.imageFileIds() == null ? current.imageFileIds() : patch.imageFileIds(),
                 patch.sourceVideoUrl() == null ? current.sourceVideoUrl() : patch.sourceVideoUrl(),
                 patch.sourceVideoFileId() == null ? current.sourceVideoFileId() : patch.sourceVideoFileId(),
                 patch.sourceVideoFileName() == null ? current.sourceVideoFileName() : patch.sourceVideoFileName(),
@@ -468,7 +469,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         ProductInfo productInfo = new ProductInfo(
                 productName,
                 valueOrDefault(generateRequest.sellingPoints(), String.join("、", insight.valuePropositions())),
-                generateRequest.referenceImageUrls() == null ? List.of() : generateRequest.referenceImageUrls(),
+                mergeReferenceResources(generateRequest.referenceImageUrls(), generateRequest.referenceImageFileIds()),
                 null,
                 null,
                 Map.of("keywords", insight.keywords(), "creativeStrategy", insight.creativeStrategy())
@@ -1197,6 +1198,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 task.getInputType(),
                 task.getInputText(),
                 List.of(),
+                List.of(),
                 null,
                 null,
                 null,
@@ -1230,7 +1232,8 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 null,
                 request.style(),
                 String.valueOf(request.durationValue()),
-                safeImageUrls(request.imageUrls())
+                safeImageUrls(request.imageUrls()),
+                safeImageFileIds(request.imageFileIds())
         );
     }
 
@@ -1241,6 +1244,26 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         return imageUrls.stream()
                 .filter(StringUtils::hasText)
                 .toList();
+    }
+
+    private List<String> safeImageFileIds(List<String> imageFileIds) {
+        if (imageFileIds == null || imageFileIds.isEmpty()) {
+            return List.of();
+        }
+        return imageFileIds.stream()
+                .filter(StringUtils::hasText)
+                .toList();
+    }
+
+    private List<String> mergeReferenceResources(List<String> imageUrls, List<String> imageFileIds) {
+        List<String> urls = safeImageUrls(imageUrls);
+        List<String> fileIds = safeImageFileIds(imageFileIds).stream()
+                .map(fileId -> "fileid:" + fileId)
+                .toList();
+        java.util.ArrayList<String> merged = new java.util.ArrayList<>(urls.size() + fileIds.size());
+        merged.addAll(urls);
+        merged.addAll(fileIds);
+        return merged;
     }
 
     private String defaultPrompt() {

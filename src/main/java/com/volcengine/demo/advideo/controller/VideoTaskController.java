@@ -51,6 +51,12 @@ public class VideoTaskController {
         return ApiResponse.success(new UploadVideoResponse(uploadResult.fileId(), uploadResult.fileName()));
     }
 
+    @PostMapping("/upload-image")
+    public ApiResponse<UploadVideoResponse> uploadImage(@RequestParam("file") MultipartFile file) {
+        ArkFileClient.UploadResult uploadResult = arkFileClient.uploadImage(file);
+        return ApiResponse.success(new UploadVideoResponse(uploadResult.fileId(), uploadResult.fileName()));
+    }
+
     @PostMapping("/{taskId}/start")
     public ApiResponse<Void> start(@PathVariable String taskId) {
         log.info("Start video task, taskId={}", taskId);

@@ -53,7 +53,7 @@ public class SeedreamImageClient {
         Map<String, Object> payload = Map.of(
                 "model", modelName(),
                 "prompt", prompt,
-                "image", referenceImageUrls == null ? List.of() : referenceImageUrls,
+                "image", imageInputs(referenceImageUrls),
                 "sequential_image_generation", "auto",
                 "sequential_image_generation_options", Map.of("max_images", maxImages),
                 "watermark", false
@@ -82,6 +82,23 @@ public class SeedreamImageClient {
                 response == null || response.usage() == null ? null : response.usage().outputTokens(),
                 response == null || response.usage() == null ? null : response.usage().totalTokens());
         return imageUrls(response, prompt, maxImages);
+    }
+
+    private List<Object> imageInputs(List<String> referenceImageUrls) {
+        if (referenceImageUrls == null || referenceImageUrls.isEmpty()) {
+            return List.of();
+        }
+        return referenceImageUrls.stream()
+                .filter(StringUtils::hasText)
+                .map(this::imageInput)
+                .toList();
+    }
+
+    private Object imageInput(String value) {
+        if (value.startsWith("fileid:")) {
+            return Map.of("file_id", value.substring("fileid:".length()));
+        }
+        return value;
     }
 
     private String modelName() {

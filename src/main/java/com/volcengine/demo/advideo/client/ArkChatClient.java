@@ -31,10 +31,23 @@ public class ArkChatClient {
     }
 
     public String complete(String systemPrompt, String userPrompt, List<String> imageUrls) {
-        List<MediaInput> mediaInputs = imageUrls == null ? List.of() : imageUrls.stream()
-                .filter(StringUtils::hasText)
-                .map(MediaInput::imageUrl)
-                .toList();
+        return complete(systemPrompt, userPrompt, imageUrls, List.of());
+    }
+
+    public String complete(String systemPrompt, String userPrompt, List<String> imageUrls, List<String> imageFileIds) {
+        List<MediaInput> mediaInputs = new ArrayList<>();
+        if (imageUrls != null) {
+            mediaInputs.addAll(imageUrls.stream()
+                    .filter(StringUtils::hasText)
+                    .map(MediaInput::imageUrl)
+                    .toList());
+        }
+        if (imageFileIds != null) {
+            mediaInputs.addAll(imageFileIds.stream()
+                    .filter(StringUtils::hasText)
+                    .map(MediaInput::imageFile)
+                    .toList());
+        }
         return completeWithMedia(systemPrompt, userPrompt, mediaInputs);
     }
 
@@ -140,6 +153,10 @@ public class ArkChatClient {
 
         public static MediaInput imageUrl(String url) {
             return new MediaInput("image_url", url, null);
+        }
+
+        public static MediaInput imageFile(String fileId) {
+            return new MediaInput("image_url", null, fileId);
         }
 
         public static MediaInput videoUrl(String url) {

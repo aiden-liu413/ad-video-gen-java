@@ -28,20 +28,28 @@ public class ArkFileClient {
     }
 
     public UploadResult uploadVideo(MultipartFile file) {
+        return uploadFile(file, "video.mp4");
+    }
+
+    public UploadResult uploadImage(MultipartFile file) {
+        return uploadFile(file, "image.png");
+    }
+
+    private UploadResult uploadFile(MultipartFile file, String fallbackFileName) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("上传视频不能为空");
+            throw new IllegalArgumentException("上传文件不能为空");
         }
         if (!StringUtils.hasText(properties.llm().apiKey())) {
             log.info("Ark file upload api key missing, return mock file id, fileName={}", file.getOriginalFilename());
-            return new UploadResult("mock-file-" + System.currentTimeMillis(), valueOrDefault(file.getOriginalFilename(), "video.mp4"));
+            return new UploadResult("mock-file-" + System.currentTimeMillis(), valueOrDefault(file.getOriginalFilename(), fallbackFileName));
         }
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("purpose", filePurpose());
-        body.add("file", new NamedByteArrayResource(readBytes(file), valueOrDefault(file.getOriginalFilename(), "video.mp4")));
+        body.add("file", new NamedByteArrayResource(readBytes(file), valueOrDefault(file.getOriginalFilename(), fallbackFileName)));
 
         try {
-            log.info("Upload video file to Ark, fileName={}, size={}, purpose={}",
+            log.info("Upload file to Ark, fileName={}, size={}, purpose={}",
                     file.getOriginalFilename(), file.getSize(), filePurpose());
             FileResponse response = restClient.post()
                     .uri("/files")
@@ -65,16 +73,14 @@ public class ArkFileClient {
     }
 
     private String filePurpose() {
-        return properties.fileUpload() == null || !StringUtils.hasText(properties.fileUpload().purpose())
-                ? "vision"
-                : properties.fileUpload().purpose();
+        return "user_data";
     }
 
     private byte[] readBytes(MultipartFile file) {
         try {
             return file.getBytes();
         } catch (Exception ex) {
-            throw new IllegalStateException("读取上传视频失败", ex);
+            throw new IllegalStateException("读取上传文件失败", ex);
         }
     }
 

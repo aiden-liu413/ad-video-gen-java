@@ -10,6 +10,7 @@ public record GenerateRequest(
         String sellingPoints,
         String style,
         String duration,
-        List<String> referenceImageUrls
+        List<String> referenceImageUrls,
+        List<String> referenceImageFileIds
 ) {
 }
