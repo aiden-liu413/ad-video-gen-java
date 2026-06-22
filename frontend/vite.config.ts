@@ -19,7 +19,7 @@ export default defineConfig({
         changeOrigin: true,
         secure: false
       },
-      "/s": {
+      "^/s/": {
         target: backendTarget,
         changeOrigin: true,
         secure: false
