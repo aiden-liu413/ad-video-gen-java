@@ -488,6 +488,41 @@ pre {
   margin-bottom: 4px;
 }
 
+.workflow-inline-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  padding: 2px 4px 0;
+}
+
+.workflow-inline-tabs button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #8aa0b4;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.workflow-inline-tabs button:hover {
+  color: #1a8fa8;
+}
+
+.workflow-inline-tabs button.active {
+  color: #18b5c7;
+}
+
+.workflow-inline-separator {
+  color: #9ab0c1;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .workflow-picker-side {
   margin-bottom: 2px;
 }
@@ -1396,6 +1431,10 @@ blockquote {
   .split-actions,
   .regen-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .workflow-inline-tabs {
+    flex-wrap: wrap;
   }
 
   .workflow-head {

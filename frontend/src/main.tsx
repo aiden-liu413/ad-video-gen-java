@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { Fragment, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Archive,
@@ -835,25 +835,26 @@ function CreateTaskView({
         </div>
       </section>
       <section className="input-card">
-        <div className="workflow-picker workflow-picker-main">
-          {workflowOptions.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className={form.workflowType === item.value ? "active" : ""}
-              onClick={() => setForm((previous) => ({
-                ...previous,
-                workflowType: item.value,
-                inputType: item.value === "video_storyboard_ad" ? "source_video" : "product_image",
-                videoType: item.value === "video_storyboard_ad" ? "视频素材重制广告" : "商品展示视频",
-                text: item.value === "video_storyboard_ad"
-                  ? "请基于上传的视频素材总结分镜，并重制为一条广告视频。"
-                  : previous.text
-              }))}
-            >
-              <strong>{item.label}</strong>
-              <span>{item.description}</span>
-            </button>
+        <div className="workflow-inline-tabs" aria-label="工作流类型切换">
+          {workflowOptions.map((item, index) => (
+            <Fragment key={item.value}>
+              {index > 0 && <span className="workflow-inline-separator">|</span>}
+              <button
+                type="button"
+                className={form.workflowType === item.value ? "active" : ""}
+                onClick={() => setForm((previous) => ({
+                  ...previous,
+                  workflowType: item.value,
+                  inputType: item.value === "video_storyboard_ad" ? "source_video" : "product_image",
+                  videoType: item.value === "video_storyboard_ad" ? "视频素材重制广告" : "商品展示视频",
+                  text: item.value === "video_storyboard_ad"
+                    ? "请基于上传的视频素材总结分镜，并重制为一条广告视频。"
+                    : previous.text
+                }))}
+              >
+                {item.value === "product_image_ad" ? "商品图生成" : "视频解析生成"}
+              </button>
+            </Fragment>
           ))}
         </div>
         {form.workflowType === "video_storyboard_ad" && (
