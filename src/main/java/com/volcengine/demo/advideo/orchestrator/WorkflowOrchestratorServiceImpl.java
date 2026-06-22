@@ -558,6 +558,9 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     }
 
     private List<ShotImageGroup> generateImages(CreateVideoTaskRequest request, VideoConfig config, List<Shot> shots) {
+        if (isVideoStoryboardWorkflow(workflowType(request))) {
+            return generateImagesPerShot(request, config, shots);
+        }
         int imageCountPerShot = request.imageCount();
         int totalImageCount = shots.size() * imageCountPerShot;
         log.info("Generate image groups with one Seedream request, shotCount={}, imageCountPerShot={}, totalImageCount={}",
@@ -586,6 +589,63 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             groups.add(new ShotImageGroup(shot.shotId(), shot.duration(), shot.prompt(), shot.action(), shot.words(), shot.reference(), images));
         }
         return groups;
+    }
+
+    private List<ShotImageGroup> generateImagesPerShot(CreateVideoTaskRequest request, VideoConfig config, List<Shot> shots) {
+        int imageCountPerShot = request.imageCount();
+        log.info("Generate image groups per shot, shotCount={}, imageCountPerShot={}", shots.size(), imageCountPerShot);
+        return awaitAll(shots.stream()
+                .map(shot -> CompletableFuture.supplyAsync(() -> generateImageGroupForShot(config, shot, imageCountPerShot)))
+                .toList());
+    }
+
+    private ShotImageGroup generateImageGroupForShot(VideoConfig config, Shot shot, int imageCountPerShot) {
+        List<String> references = shotReferenceUrls(shot);
+        List<String> urls = imageClient.generateImages(buildSingleShotImagePrompt(config, shot, imageCountPerShot), references, imageCountPerShot);
+        List<ImageCandidate> images = new ArrayList<>();
+        for (int index = 1; index <= imageCountPerShot; index++) {
+            String url = index - 1 < urls.size()
+                    ? urls.get(index - 1)
+                    : "mock://seedream/images/" + Math.abs((shot.shotId() + shot.prompt() + index).hashCode()) + ".png";
+            images.add(new ImageCandidate(
+                    assetId("img", shot.shotId(), index),
+                    shot.shotId(),
+                    index,
+                    url,
+                    null,
+                    null,
+                    false
+            ));
+        }
+        return new ShotImageGroup(shot.shotId(), shot.duration(), shot.prompt(), shot.action(), shot.words(), shot.reference(), images);
+    }
+
+    private String buildSingleShotImagePrompt(VideoConfig config, Shot shot, int imageCountPerShot) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("请仅围绕分镜 ").append(shot.shotId()).append(" 生成 ").append(imageCountPerShot).append(" 张候选广告图片。");
+        prompt.append("这").append(imageCountPerShot).append("张图必须全部属于同一个分镜，严禁混入其他分镜的场景、动作、结果或商品状态。");
+        prompt.append("同一分镜内保持主体、场景阶段、营销意图和关键动作一致，只允许构图、角度、景别、光线和细节变化。");
+        prompt.append("如果提供了参考图，必须将参考图视为当前分镜唯一参考，不得扩散到其他分镜内容。");
+        prompt.append("画面比例：").append(config.aspectRatio()).append("。要求：无水印，广告可用，主体清晰。\n");
+        prompt.append("分镜ID：").append(shot.shotId()).append("\n");
+        prompt.append("画面总结：").append(shot.prompt()).append("\n");
+        prompt.append("镜头动作：").append(shot.action()).append("\n");
+        prompt.append("口播/字幕：").append(shot.words()).append("\n");
+        return prompt.toString();
+    }
+
+    private List<String> shotReferenceUrls(Shot shot) {
+        if (shot == null || !StringUtils.hasText(shot.reference())) {
+            return List.of();
+        }
+        String reference = shot.reference().trim();
+        if (reference.startsWith("data:image/")) {
+            return List.of(reference);
+        }
+        return java.util.Arrays.stream(reference.split("[\\n\\r,]+"))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList();
     }
 
     private String buildBatchImagePrompt(VideoConfig config, List<Shot> shots, int imageCountPerShot) {
@@ -1038,7 +1098,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                                 edited.prompt(),
                                 edited.action(),
                                 edited.words(),
-                                current.reference(),
+                                edited.reference(),
                                 current.camera(),
                                 current.sceneType()
                         ))

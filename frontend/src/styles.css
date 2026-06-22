@@ -771,6 +771,64 @@ pre {
   gap: 12px;
 }
 
+.shot-reference-field {
+  display: grid;
+  gap: 10px;
+}
+
+.shot-reference-field > span {
+  color: #52677c;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.shot-reference-preview {
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  border: 1px solid #d6e5ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.shot-reference-empty {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  border: 1px dashed #bcd7e2;
+  border-radius: 8px;
+  background: #f4fbfe;
+  color: #6e8192;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.shot-upload-button {
+  width: fit-content;
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border: 1px solid #b7d8e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #12314a;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shot-upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .shot-card header {
   display: flex;
   justify-content: space-between;

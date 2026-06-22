@@ -427,7 +427,7 @@ function App() {
     setBusy(true);
     setMessage("");
     try {
-      const imageUrls = await prepareImageUrls();
+      const imageUrls = form.workflowType === "video_storyboard_ad" ? [] : await prepareImageUrls();
       const videoSource = await prepareVideoSource();
       if (form.workflowType === "product_image_ad" && imageUrls.length === 0) {
         throw new Error("请上传本地产品图片，或输入至少一个图片链接");
@@ -829,20 +829,24 @@ function CreateTaskView({
             </label>
           </>
         )}
-        <div className="source-title">
-          <ImageIcon size={20} />
-          <span>{form.workflowType === "video_storyboard_ad" ? "参考图片素材（可选）" : "产品图片"}</span>
-        </div>
-        <label className="upload-zone">
-          <UploadCloud size={42} />
-          <strong>{imageFile ? imageFile.name : (form.workflowType === "video_storyboard_ad" ? "拖拽参考图片至此" : "拖拽产品图片至此")}</strong>
-          <span>支持 PNG, JPG, WEBP 或 AVIF，上传后自动转为 JPEG</span>
-          <input type="file" accept="image/*" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} />
-        </label>
-        <label>
-          图片链接
-          <textarea value={form.imageUrls} onChange={(event) => setFormValue("imageUrls", event.target.value, setForm)} placeholder="每行一个图片链接，例如 https://example.com/product.png" />
-        </label>
+        {form.workflowType !== "video_storyboard_ad" && (
+          <>
+            <div className="source-title">
+              <ImageIcon size={20} />
+              <span>产品图片</span>
+            </div>
+            <label className="upload-zone">
+              <UploadCloud size={42} />
+              <strong>{imageFile ? imageFile.name : "拖拽产品图片至此"}</strong>
+              <span>支持 PNG, JPG, WEBP 或 AVIF，上传后自动转为 JPEG</span>
+              <input type="file" accept="image/*" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} />
+            </label>
+            <label>
+              图片链接
+              <textarea value={form.imageUrls} onChange={(event) => setFormValue("imageUrls", event.target.value, setForm)} placeholder="每行一个图片链接，例如 https://example.com/product.png" />
+            </label>
+          </>
+        )}
         <label>
           产品或需求描述
           <textarea value={form.text} onChange={(event) => setFormValue("text", event.target.value, setForm)} placeholder={form.workflowType === "video_storyboard_ad" ? "描述你希望如何基于原视频重制广告，例如风格、时长、平台、保留哪些镜头..." : "描述视觉美学、灯光、运动行为和核心信息..."} />
@@ -1120,9 +1124,15 @@ function ShotStage({ task, editableShots, setEditableShots, readOnly }: StageVie
 }
 
 function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOnly }: StageViewProps) {
-  function updateShot(shotId: string, key: "prompt" | "action" | "words", value: string) {
+  function updateShot(shotId: string, key: "prompt" | "action" | "words" | "reference", value: string) {
     if (readOnly) return;
     setEditableShots(editableShots.map((shot) => shot.shotId === shotId ? { ...shot, [key]: value } : shot));
+  }
+
+  async function uploadReference(shotId: string, file: File | null) {
+    if (!file || readOnly) return;
+    const reference = await fileToJpegDataUrl(file);
+    updateShot(shotId, "reference", reference);
   }
 
   return (
@@ -1143,6 +1153,26 @@ function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOn
               <label>画面总结<textarea readOnly={readOnly} value={shot.prompt ?? ""} onChange={(event) => updateShot(shot.shotId, "prompt", event.target.value)} /></label>
               <label>镜头动作<input readOnly={readOnly} value={shot.action ?? ""} onChange={(event) => updateShot(shot.shotId, "action", event.target.value)} /></label>
               <label>口播 / 字幕<textarea readOnly={readOnly} value={shot.words ?? ""} onChange={(event) => updateShot(shot.shotId, "words", event.target.value)} /></label>
+              <div className="shot-reference-field">
+                <span>分镜参考图</span>
+                {isRenderableImage(shot.reference) ? (
+                  <img className="shot-reference-preview" src={shot.reference} alt={`${shot.shotId}-reference`} />
+                ) : (
+                  <div className="shot-reference-empty">
+                    {shot.reference ? "当前参考图不可预览" : "未上传参考图，将只按当前分镜内容生成候选图片"}
+                  </div>
+                )}
+                {!readOnly && (
+                  <label className="shot-upload-button">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => void uploadReference(shot.shotId, event.target.files?.[0] ?? null)}
+                    />
+                    <span>{shot.reference ? "替换参考图" : "上传参考图"}</span>
+                  </label>
+                )}
+              </div>
             </article>
           ))}
         </div>
