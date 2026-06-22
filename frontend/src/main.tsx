@@ -137,6 +137,7 @@ type TaskRequest = {
   inputType: "product_image" | "source_video";
   text?: string;
   imageUrls?: string[];
+  imageFileIds?: string[];
   sourceVideoUrl?: string;
   sourceVideoFileId?: string;
   sourceVideoFileName?: string;
@@ -228,6 +229,8 @@ type FormState = {
   inputType: "product_image" | "source_video";
   text: string;
   imageUrls: string;
+  imageFileId: string;
+  imageFileName: string;
   sourceVideoUrl: string;
   sourceVideoFileId: string;
   sourceVideoFileName: string;
@@ -279,6 +282,8 @@ const initialForm: FormState = {
   inputType: "product_image",
   text: "参考上传的商品图片，生成一条 15 秒带货广告视频。商品：卖点：",
   imageUrls: "",
+  imageFileId: "",
+  imageFileName: "",
   sourceVideoUrl: "",
   sourceVideoFileId: "",
   sourceVideoFileName: "",
@@ -329,6 +334,7 @@ const emptyRegenerateDraft: RegenerateDraft = {
     inputType: "product_image",
     text: "",
     imageUrls: [],
+    imageFileIds: [],
     sourceVideoUrl: "",
     sourceVideoFileId: "",
     sourceVideoFileName: "",
@@ -439,9 +445,9 @@ function App() {
     setBusy(true);
     setMessage("");
     try {
-      const imageUrls = form.workflowType === "video_storyboard_ad" ? [] : await prepareImageUrls();
+      const imageSources = form.workflowType === "video_storyboard_ad" ? { imageUrls: [], imageFileIds: [] } : await prepareImageSources();
       const videoSource = await prepareVideoSource();
-      if (form.workflowType === "product_image_ad" && imageUrls.length === 0) {
+      if (form.workflowType === "product_image_ad" && imageSources.imageUrls.length === 0 && imageSources.imageFileIds.length === 0) {
         throw new Error("请上传本地产品图片，或输入至少一个图片链接");
       }
       if (form.workflowType === "video_storyboard_ad" && !videoSource.sourceVideoUrl && !videoSource.sourceVideoFileId) {
@@ -454,7 +460,8 @@ function App() {
           workflowType: form.workflowType,
           inputType: form.workflowType === "video_storyboard_ad" ? "source_video" : "product_image",
           text: form.text,
-          imageUrls,
+          imageUrls: imageSources.imageUrls,
+          imageFileIds: imageSources.imageFileIds,
           sourceVideoUrl: videoSource.sourceVideoUrl,
           sourceVideoFileId: videoSource.sourceVideoFileId,
           sourceVideoFileName: videoSource.sourceVideoFileName,
@@ -482,12 +489,35 @@ function App() {
     }
   }
 
-  async function prepareImageUrls() {
+  async function prepareImageSources() {
     const manual = await Promise.all(
       form.imageUrls.split("\n").map((item) => item.trim()).filter(Boolean).map(normalizeImageUrl)
     );
-    if (!imageFile) return manual;
-    return [await fileToJpegDataUrl(imageFile), ...manual];
+    if (!imageFile) {
+      return {
+        imageUrls: manual,
+        imageFileIds: form.imageFileId ? [form.imageFileId] : []
+      };
+    }
+    const formData = new FormData();
+    formData.append("file", imageFile);
+    const response = await fetch(`${API_BASE}/api/video-tasks/upload-image`, {
+      method: "POST",
+      body: formData
+    });
+    const body = (await response.json()) as ApiResponse<{ fileId: string; fileName: string }>;
+    if (!response.ok || body.code !== 0) {
+      throw new Error(body.message || response.statusText);
+    }
+    setForm((previous) => ({
+      ...previous,
+      imageFileId: body.data.fileId,
+      imageFileName: body.data.fileName
+    }));
+    return {
+      imageUrls: manual,
+      imageFileIds: [body.data.fileId]
+    };
   }
 
   async function prepareVideoSource() {
@@ -805,7 +835,7 @@ function CreateTaskView({
         </div>
       </section>
       <section className="input-card">
-        <div className="workflow-picker">
+        <div className="workflow-picker workflow-picker-main">
           {workflowOptions.map((item) => (
             <button
               key={item.value}
@@ -828,10 +858,6 @@ function CreateTaskView({
         </div>
         {form.workflowType === "video_storyboard_ad" && (
           <>
-            <div className="source-title">
-              <Video size={20} />
-              <span>源视频素材</span>
-            </div>
             <label className="upload-zone">
               <UploadCloud size={42} />
               <strong>{videoFile ? videoFile.name : (form.sourceVideoFileName || "拖拽源视频至此")}</strong>
@@ -846,13 +872,9 @@ function CreateTaskView({
         )}
         {form.workflowType !== "video_storyboard_ad" && (
           <>
-            <div className="source-title">
-              <ImageIcon size={20} />
-              <span>产品图片</span>
-            </div>
             <label className="upload-zone">
               <UploadCloud size={42} />
-              <strong>{imageFile ? imageFile.name : "拖拽产品图片至此"}</strong>
+              <strong>{imageFile ? imageFile.name : (form.imageFileName || "拖拽产品图片至此")}</strong>
               <span>支持 PNG, JPG, WEBP 或 AVIF，上传后自动转为 JPEG</span>
               <input type="file" accept="image/*" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} />
             </label>
@@ -876,48 +898,9 @@ function CreateTaskView({
             <input type="number" min={1} max={5} value={form.generateVideoCount} onChange={(event) => setFormValue("generateVideoCount", event.target.value, setForm)} />
           </label>
         </div>
-        <div className="toggle-panel">
-          <label className="toggle-card">
-            <input
-              type="checkbox"
-              checked={form.imageScoringEnabled}
-              onChange={(event) => setForm((previous) => ({ ...previous, imageScoringEnabled: event.target.checked }))}
-            />
-            <div>
-              <b>图片评分</b>
-              <span>启用后自动对候选图片评分，并默认勾选当前最佳图片。</span>
-            </div>
-          </label>
-          <label className="toggle-card">
-            <input
-              type="checkbox"
-              checked={form.videoScoringEnabled}
-              onChange={(event) => setForm((previous) => ({ ...previous, videoScoringEnabled: event.target.checked }))}
-            />
-            <div>
-              <b>视频评分</b>
-              <span>启用后自动对候选分镜视频评分，并默认勾选当前最佳片段。</span>
-            </div>
-          </label>
-          <label className="toggle-card">
-            <input
-              type="checkbox"
-              checked={form.autoConfirmEnabled}
-              onChange={(event) => setForm((previous) => ({ ...previous, autoConfirmEnabled: event.target.checked }))}
-            />
-            <div>
-              <b>自动确认</b>
-              <span>启用后在无需人工挑选素材的节点会自动进入下一步；关闭评分时仍会停下等待人工选择。</span>
-            </div>
-          </label>
-        </div>
       </section>
       <aside className="config-card">
         <h3>生成配置</h3>
-        <label>
-          视频类型
-          <input value={form.workflowType === "video_storyboard_ad" ? "视频素材重制广告" : "商品展示视频"} readOnly />
-        </label>
         <div>
           <span className="field-label">目标平台</span>
           <div className="platforms">
@@ -967,9 +950,30 @@ function CreateTaskView({
         </div>
         <textarea value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="输入自定义风格描述..." />
         <div className="summary-flags">
-          <span>图片评分<b>{form.imageScoringEnabled ? "开启" : "关闭"}</b></span>
-          <span>视频评分<b>{form.videoScoringEnabled ? "开启" : "关闭"}</b></span>
-          <span>自动确认<b>{form.autoConfirmEnabled ? "开启" : "关闭"}</b></span>
+          <label className="summary-flag-toggle">
+            <span>图片评分</span>
+            <input
+              type="checkbox"
+              checked={form.imageScoringEnabled}
+              onChange={(event) => setForm((previous) => ({ ...previous, imageScoringEnabled: event.target.checked }))}
+            />
+          </label>
+          <label className="summary-flag-toggle">
+            <span>视频评分</span>
+            <input
+              type="checkbox"
+              checked={form.videoScoringEnabled}
+              onChange={(event) => setForm((previous) => ({ ...previous, videoScoringEnabled: event.target.checked }))}
+            />
+          </label>
+          <label className="summary-flag-toggle">
+            <span>自动确认</span>
+            <input
+              type="checkbox"
+              checked={form.autoConfirmEnabled}
+              onChange={(event) => setForm((previous) => ({ ...previous, autoConfirmEnabled: event.target.checked }))}
+            />
+          </label>
         </div>
         {message && <div className="message">{message}</div>}
         <button className="primary big" disabled={busy}>
@@ -1444,9 +1448,13 @@ function RegenerateControls({
           <input value={regenerateReason} onChange={(event) => setRegenerateReason(event.target.value)} placeholder="填写重燃原因..." />
         </label>
       </div>
+      <div className="regen-stage-intro">
+        <b>{stageOptions.find((option) => option.value === regenerateStage)?.label ?? "当前阶段"}</b>
+        <span>修改该阶段真正使用的输入参数后，再从这里重新生成后续内容。</span>
+      </div>
       <div className="regen-fields">
         {regenerateStage === "MARKET_PLANNING" && (
-          <>
+          <section className="regen-section">
             <label>需求描述<textarea value={regenerateDraft.taskInput.text ?? ""} onChange={(event) => updateTaskInput({ text: event.target.value })} /></label>
             <label>图片链接<textarea value={(regenerateDraft.taskInput.imageUrls ?? []).join("\n")} onChange={(event) => updateTaskInput({ imageUrls: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean) })} /></label>
             <div className="metric-row">
@@ -1469,10 +1477,10 @@ function RegenerateControls({
               <label>总时长<input type="number" min={1} value={regenerateDraft.taskInput.duration ?? 15} onChange={(event) => updateTaskInput({ duration: Number(event.target.value || 15) })} /></label>
               <label>比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
             </div>
-          </>
+          </section>
         )}
         {regenerateStage === "SHOT_SCRIPT_GENERATING" && (
-          <>
+          <section className="regen-section">
             <div className="metric-row">
               <label>{task.workflowType === "video_storyboard_ad" ? "素材标题" : "商品名称"}<input value={regenerateDraft.videoConfig.productInfo?.name ?? ""} onChange={(event) => updateProductInfo({ name: event.target.value })} /></label>
               <label>视频类型<input value={regenerateDraft.videoConfig.videoType ?? "商品展示视频"} onChange={(event) => updateVideoConfig({ videoType: event.target.value })} /></label>
@@ -1490,10 +1498,10 @@ function RegenerateControls({
                 <label>创意策略<textarea value={regenerateDraft.videoConfig.videoAdvice ?? ""} onChange={(event) => updateVideoConfig({ videoAdvice: event.target.value })} /></label>
               </>
             )}
-          </>
+          </section>
         )}
         {regenerateStage === "IMAGE_GENERATING" && (
-          <>
+          <section className="regen-section">
             <div className="metric-row">
               <label>候选图片数量<input type="number" min={1} max={10} value={regenerateDraft.taskInput.generateImageCount ?? 1} onChange={(event) => updateTaskInput({ generateImageCount: Number(event.target.value || 1) })} /></label>
               <label>画面比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
@@ -1527,10 +1535,10 @@ function RegenerateControls({
                 </div>
               ))}
             </div>
-          </>
+          </section>
         )}
         {regenerateStage === "VIDEO_GENERATING" && (
-          <>
+          <section className="regen-section">
             <div className="metric-row">
               <label>候选视频数量<input type="number" min={1} max={5} value={regenerateDraft.taskInput.generateVideoCount ?? 1} onChange={(event) => updateTaskInput({ generateVideoCount: Number(event.target.value || 1) })} /></label>
               <label>视频比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
@@ -1581,10 +1589,12 @@ function RegenerateControls({
             ) : (
               <MediaGrid groups={task.scoredImageGroups} selected={regenerateDraft.selectedImages} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })} type="image" />
             )}
-          </>
+          </section>
         )}
         {regenerateStage === "FINAL_COMPOSING" && (
-          <MediaGrid groups={task.scoredVideoGroups} selected={regenerateDraft.selectedVideos} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedVideos: value })} type="video" />
+          <section className="regen-section">
+            <MediaGrid groups={task.scoredVideoGroups} selected={regenerateDraft.selectedVideos} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedVideos: value })} type="video" />
+          </section>
         )}
       </div>
       <div className="regen-actions">
@@ -1606,6 +1616,7 @@ function regenerateDraftFromTask(task: TaskDetail): RegenerateDraft {
       text: task.request?.text ?? "",
       imageUrls: task.request?.imageUrls ?? task.videoConfig?.productInfo?.resources ?? [],
       sourceVideoUrl: task.request?.sourceVideoUrl ?? "",
+      imageFileIds: task.request?.imageFileIds ?? [],
       sourceVideoFileId: task.request?.sourceVideoFileId ?? "",
       sourceVideoFileName: task.request?.sourceVideoFileName ?? "",
       videoType: task.request?.videoType ?? "商品展示视频",

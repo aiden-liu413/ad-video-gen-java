@@ -484,6 +484,14 @@ pre {
   gap: 10px;
 }
 
+.workflow-picker-main {
+  margin-bottom: 4px;
+}
+
+.workflow-picker-side {
+  margin-bottom: 2px;
+}
+
 .workflow-picker button {
   display: grid;
   gap: 6px;
@@ -981,6 +989,27 @@ pre {
   grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
   gap: 14px;
   align-items: end;
+  padding: 14px 16px;
+  border: 1px solid #d8e6ee;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.regen-stage-intro {
+  display: grid;
+  gap: 4px;
+  padding: 0 2px;
+}
+
+.regen-stage-intro b {
+  color: #173149;
+  font-size: 15px;
+}
+
+.regen-stage-intro span {
+  color: #6c7f91;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .regen-control span {
@@ -1004,6 +1033,15 @@ pre {
   min-height: 70px;
 }
 
+.regen-section {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #dbe8ef;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
 .regen-shot-list {
   display: grid;
   gap: 14px;
@@ -1014,19 +1052,24 @@ pre {
   grid-template-columns: 88px 80px minmax(180px, 1fr);
   gap: 10px;
   align-items: center;
+  padding: 14px;
+  border: 1px solid #d8e6ee;
+  border-radius: 8px;
+  background: #fbfdff;
 }
 
 .toggle-panel {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .toggle-card {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
-  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 14px;
   border: 1px solid #d4e3eb;
   border-radius: 8px;
   background: #f8fdff;
@@ -1035,21 +1078,15 @@ pre {
 .toggle-card input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  margin: 2px 0 0;
+  margin: 0;
+  flex: 0 0 auto;
 }
 
 .toggle-card b {
   display: block;
   color: #173149;
   font-size: 14px;
-}
-
-.toggle-card span {
-  display: block;
-  margin-top: 4px;
-  color: #6b8092;
-  font-size: 12px;
-  line-height: 1.55;
+  font-weight: 700;
 }
 
 .summary-flags {
@@ -1057,7 +1094,7 @@ pre {
   gap: 10px;
 }
 
-.summary-flags span {
+.summary-flag-toggle {
   min-height: 40px;
   display: flex;
   align-items: center;
@@ -1070,8 +1107,15 @@ pre {
   color: #637789;
 }
 
-.summary-flags b {
+.summary-flag-toggle span {
   color: #163047;
+  font-weight: 700;
+}
+
+.summary-flag-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
 }
 
 .regen-shot textarea,
@@ -1128,10 +1172,10 @@ pre {
 .regen-video-shot {
   display: grid;
   gap: 12px;
-  padding: 14px;
+  padding: 16px;
   border: 1px solid #d4e3eb;
   border-radius: 8px;
-  background: #fff;
+  background: #fbfdff;
 }
 
 .regen-video-shot-head {
@@ -1149,7 +1193,7 @@ pre {
 .regen-video-shot-body {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(0, 1.3fr);
-  gap: 14px;
+  gap: 18px;
 }
 
 .regen-video-shot-editor {
@@ -1160,14 +1204,14 @@ pre {
 .regen-video-shot-assets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .regen-image-pick {
   position: relative;
   display: grid;
   gap: 8px;
-  padding: 10px;
+  padding: 12px;
   text-align: left;
   border: 1px solid #d4e3eb;
   border-radius: 8px;
@@ -1199,6 +1243,20 @@ pre {
   font-size: 12px;
   font-style: normal;
   font-weight: 700;
+}
+
+@media (max-width: 1180px) {
+  .regen-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .regen-video-shot-body {
+    grid-template-columns: 1fr;
+  }
+
+  .toggle-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
 .final-title {
