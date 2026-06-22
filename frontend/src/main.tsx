@@ -1344,6 +1344,14 @@ function RegenerateControls({
     ...regenerateDraft,
     shots: regenerateDraft.shots.map((shot) => shot.shotId === shotId ? { ...shot, ...patch } : shot)
   });
+  const updateImageGroup = (shotId: string, patch: Partial<ShotImageGroup>) => setRegenerateDraft({
+    ...regenerateDraft,
+    imageGroups: regenerateDraft.imageGroups.map((group) => group.shotId === shotId ? { ...group, ...patch } : group)
+  });
+  const chooseRegenerateImage = (shotId: string, assetId: string) => setRegenerateDraft({
+    ...regenerateDraft,
+    selectedImages: { ...regenerateDraft.selectedImages, [shotId]: assetId }
+  });
   const uploadShotReference = async (shotId: string, file: File | null) => {
     if (!file) return;
     const reference = await fileToJpegDataUrl(file);
@@ -1468,8 +1476,55 @@ function RegenerateControls({
         )}
         {regenerateStage === "VIDEO_GENERATING" && (
           <>
-            <label>候选视频数量<input type="number" min={1} max={5} value={regenerateDraft.taskInput.generateVideoCount ?? 1} onChange={(event) => updateTaskInput({ generateVideoCount: Number(event.target.value || 1) })} /></label>
-            <MediaGrid groups={task.scoredImageGroups} selected={regenerateDraft.selectedImages} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })} type="image" />
+            <div className="metric-row">
+              <label>候选视频数量<input type="number" min={1} max={5} value={regenerateDraft.taskInput.generateVideoCount ?? 1} onChange={(event) => updateTaskInput({ generateVideoCount: Number(event.target.value || 1) })} /></label>
+              <label>视频比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
+            </div>
+            {task.workflowType === "video_storyboard_ad" ? (
+              <div className="regen-video-shot-list">
+                {regenerateDraft.imageGroups.map((group) => {
+                  const selectedAssetId = regenerateDraft.selectedImages[group.shotId] ?? group.images.find((item) => item.selected)?.assetId ?? group.images[0]?.assetId ?? "";
+                  return (
+                    <div className="regen-video-shot" key={group.shotId}>
+                      <div className="regen-video-shot-head">
+                        <b>{group.shotId}</b>
+                        <span>{group.duration ?? "-"} 秒 · {group.images.length} 张候选图</span>
+                      </div>
+                      <div className="regen-video-shot-body">
+                        <div className="regen-video-shot-editor">
+                          <label>视频画面提示<textarea value={group.prompt} onChange={(event) => updateImageGroup(group.shotId, { prompt: event.target.value })} /></label>
+                          <label>镜头动作<input value={group.action} onChange={(event) => updateImageGroup(group.shotId, { action: event.target.value })} /></label>
+                          <label>口播 / 字幕<textarea value={group.words} onChange={(event) => updateImageGroup(group.shotId, { words: event.target.value })} /></label>
+                        </div>
+                        <div className="regen-video-shot-assets">
+                          {group.images.map((image) => {
+                            const selected = selectedAssetId === image.assetId;
+                            return (
+                              <button
+                                type="button"
+                                key={image.assetId}
+                                className={`regen-image-pick ${selected ? "selected" : ""}`}
+                                onClick={() => chooseRegenerateImage(group.shotId, image.assetId)}
+                              >
+                                {isRenderableImage(image.url) ? (
+                                  <img src={image.url} alt={image.assetId} />
+                                ) : (
+                                  <div className="mock-media">{image.url}</div>
+                                )}
+                                <span>{image.score ?? "-"} 分</span>
+                                {selected && <em>当前用于生成分镜视频</em>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <MediaGrid groups={task.scoredImageGroups} selected={regenerateDraft.selectedImages} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })} type="image" />
+            )}
           </>
         )}
         {regenerateStage === "FINAL_COMPOSING" && (
