@@ -397,10 +397,16 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     public void selectAssets(String taskId, SelectAssetsRequest request) {
         WorkflowContext context = loadContext(taskId);
         if (request.selectedImages() != null && !request.selectedImages().isEmpty()) {
-            context.setSelectedImages(selectImages(context.getScoredImageGroups(), request.selectedImages()));
+            List<ShotImageGroup> sourceGroups = isEmpty(context.getScoredImageGroups())
+                    ? context.getImageGroups()
+                    : context.getScoredImageGroups();
+            context.setSelectedImages(selectImages(sourceGroups, request.selectedImages()));
         }
         if (request.selectedVideos() != null && !request.selectedVideos().isEmpty()) {
-            context.setSelectedVideos(selectVideos(context.getScoredVideoGroups(), request.selectedVideos()));
+            List<ShotVideoGroup> sourceGroups = isEmpty(context.getScoredVideoGroups())
+                    ? context.getVideoGroups()
+                    : context.getScoredVideoGroups();
+            context.setSelectedVideos(selectVideos(sourceGroups, request.selectedVideos()));
         }
         saveContext(context);
     }
