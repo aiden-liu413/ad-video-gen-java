@@ -17,6 +17,9 @@ public record CreateVideoTaskRequest(
         Integer duration,
         String aspectRatio,
         String style,
+        Boolean imageScoringEnabled,
+        Boolean videoScoringEnabled,
+        Boolean autoConfirmEnabled,
         Integer generateImageCount,
         Integer generateVideoCount
 ) {
@@ -38,5 +41,17 @@ public record CreateVideoTaskRequest(
 
     public String workflowTypeValue() {
         return workflowType == null || workflowType.isBlank() ? "product_image_ad" : workflowType;
+    }
+
+    public boolean imageScoringEnabledValue() {
+        return Boolean.TRUE.equals(imageScoringEnabled);
+    }
+
+    public boolean videoScoringEnabledValue() {
+        return Boolean.TRUE.equals(videoScoringEnabled);
+    }
+
+    public boolean autoConfirmEnabledValue() {
+        return Boolean.TRUE.equals(autoConfirmEnabled);
     }
 }

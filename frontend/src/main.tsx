@@ -145,6 +145,9 @@ type TaskRequest = {
   duration?: number;
   aspectRatio?: string;
   style?: string;
+  imageScoringEnabled?: boolean;
+  videoScoringEnabled?: boolean;
+  autoConfirmEnabled?: boolean;
   generateImageCount?: number;
   generateVideoCount?: number;
 };
@@ -233,6 +236,9 @@ type FormState = {
   duration: string;
   aspectRatio: string;
   style: string;
+  imageScoringEnabled: boolean;
+  videoScoringEnabled: boolean;
+  autoConfirmEnabled: boolean;
   generateImageCount: string;
   generateVideoCount: string;
 };
@@ -281,6 +287,9 @@ const initialForm: FormState = {
   duration: "15",
   aspectRatio: "9:16",
   style: "赛博朋克",
+  imageScoringEnabled: false,
+  videoScoringEnabled: false,
+  autoConfirmEnabled: false,
   generateImageCount: "4",
   generateVideoCount: "2"
 };
@@ -328,6 +337,9 @@ const emptyRegenerateDraft: RegenerateDraft = {
     duration: 15,
     aspectRatio: "9:16",
     style: "",
+    imageScoringEnabled: false,
+    videoScoringEnabled: false,
+    autoConfirmEnabled: false,
     generateImageCount: 4,
     generateVideoCount: 2
   },
@@ -451,6 +463,9 @@ function App() {
           duration: Number(form.duration || 15),
           aspectRatio: form.aspectRatio,
           style: form.style,
+          imageScoringEnabled: form.imageScoringEnabled,
+          videoScoringEnabled: form.videoScoringEnabled,
+          autoConfirmEnabled: form.autoConfirmEnabled,
           generateImageCount: Number(form.generateImageCount || 4),
           generateVideoCount: Number(form.generateVideoCount || 2)
         })
@@ -861,6 +876,41 @@ function CreateTaskView({
             <input type="number" min={1} max={5} value={form.generateVideoCount} onChange={(event) => setFormValue("generateVideoCount", event.target.value, setForm)} />
           </label>
         </div>
+        <div className="toggle-panel">
+          <label className="toggle-card">
+            <input
+              type="checkbox"
+              checked={form.imageScoringEnabled}
+              onChange={(event) => setForm((previous) => ({ ...previous, imageScoringEnabled: event.target.checked }))}
+            />
+            <div>
+              <b>图片评分</b>
+              <span>启用后自动对候选图片评分，并默认勾选当前最佳图片。</span>
+            </div>
+          </label>
+          <label className="toggle-card">
+            <input
+              type="checkbox"
+              checked={form.videoScoringEnabled}
+              onChange={(event) => setForm((previous) => ({ ...previous, videoScoringEnabled: event.target.checked }))}
+            />
+            <div>
+              <b>视频评分</b>
+              <span>启用后自动对候选分镜视频评分，并默认勾选当前最佳片段。</span>
+            </div>
+          </label>
+          <label className="toggle-card">
+            <input
+              type="checkbox"
+              checked={form.autoConfirmEnabled}
+              onChange={(event) => setForm((previous) => ({ ...previous, autoConfirmEnabled: event.target.checked }))}
+            />
+            <div>
+              <b>自动确认</b>
+              <span>启用后在无需人工挑选素材的节点会自动进入下一步；关闭评分时仍会停下等待人工选择。</span>
+            </div>
+          </label>
+        </div>
       </section>
       <aside className="config-card">
         <h3>生成配置</h3>
@@ -916,6 +966,11 @@ function CreateTaskView({
           </div>
         </div>
         <textarea value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="输入自定义风格描述..." />
+        <div className="summary-flags">
+          <span>图片评分<b>{form.imageScoringEnabled ? "开启" : "关闭"}</b></span>
+          <span>视频评分<b>{form.videoScoringEnabled ? "开启" : "关闭"}</b></span>
+          <span>自动确认<b>{form.autoConfirmEnabled ? "开启" : "关闭"}</b></span>
+        </div>
         {message && <div className="message">{message}</div>}
         <button className="primary big" disabled={busy}>
           {busy ? <Loader2 className="spin" size={20} /> : <Sparkles size={22} />}
@@ -1557,6 +1612,9 @@ function regenerateDraftFromTask(task: TaskDetail): RegenerateDraft {
       duration: task.request?.duration ?? task.videoConfig?.duration ?? 15,
       aspectRatio: task.request?.aspectRatio ?? task.videoConfig?.aspectRatio ?? "9:16",
       style: task.request?.style ?? "",
+      imageScoringEnabled: task.request?.imageScoringEnabled ?? false,
+      videoScoringEnabled: task.request?.videoScoringEnabled ?? false,
+      autoConfirmEnabled: task.request?.autoConfirmEnabled ?? false,
       generateImageCount: task.request?.generateImageCount ?? 4,
       generateVideoCount: task.request?.generateVideoCount ?? 2
     },

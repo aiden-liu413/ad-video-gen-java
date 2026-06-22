@@ -181,74 +181,108 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 context.setVideoConfig(generateVideoConfigForVideoStoryboard(request, summary));
                 context.setShots(summary.shots());
                 saveContext(context);
-                markWaitingReview(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
-                return;
+                if (shouldPauseForReview(request, TaskStage.SHOT_SCRIPT_GENERATING, false)) {
+                    markWaitingReview(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
+                    return;
+                }
             }
 
             if (!isVideoStoryboardWorkflow(workflowType) && context.getVideoConfig() == null) {
                 markStage(taskId, TaskStage.MARKET_PLANNING);
                 context.setVideoConfig(generateVideoConfig(request));
                 saveContext(context);
-                markWaitingReview(taskId, TaskStage.MARKET_PLANNING);
-                return;
+                if (shouldPauseForReview(request, TaskStage.MARKET_PLANNING, false)) {
+                    markWaitingReview(taskId, TaskStage.MARKET_PLANNING);
+                    return;
+                }
             }
 
             if (!isVideoStoryboardWorkflow(workflowType) && isEmpty(context.getShots())) {
                 markStage(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
                 context.setShots(generateShots(request, context.getVideoConfig()));
                 saveContext(context);
-                markWaitingReview(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
-                return;
+                if (shouldPauseForReview(request, TaskStage.SHOT_SCRIPT_GENERATING, false)) {
+                    markWaitingReview(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
+                    return;
+                }
             }
 
             if (isEmpty(context.getImageGroups())) {
                 markStage(taskId, TaskStage.IMAGE_GENERATING);
                 List<ShotImageGroup> imageGroups = generateImages(request, context.getVideoConfig(), context.getShots());
                 context.setImageGroups(imageGroups);
-                context.setScoredImageGroups(evaluateImages(imageGroups));
-                context.setSelectedImages(pickBestImages(context.getScoredImageGroups()));
+                if (request.imageScoringEnabledValue()) {
+                    context.setScoredImageGroups(evaluateImages(imageGroups));
+                    context.setSelectedImages(pickBestImages(context.getScoredImageGroups()));
+                } else {
+                    context.setScoredImageGroups(List.of());
+                    context.setSelectedImages(List.of());
+                }
                 saveContext(context);
-                markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
-                return;
+                if (shouldPauseForReview(request, TaskStage.IMAGE_GENERATING, !request.imageScoringEnabledValue())) {
+                    markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
+                    return;
+                }
             }
 
-            if (isEmpty(context.getScoredImageGroups())) {
+            if (request.imageScoringEnabledValue() && isEmpty(context.getScoredImageGroups())) {
                 markStage(taskId, TaskStage.IMAGE_GENERATING);
                 context.setScoredImageGroups(evaluateImages(context.getImageGroups()));
                 context.setSelectedImages(pickBestImages(context.getScoredImageGroups()));
                 saveContext(context);
-                markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
-                return;
+                if (shouldPauseForReview(request, TaskStage.IMAGE_GENERATING, false)) {
+                    markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
+                    return;
+                }
             }
 
             if (isEmpty(context.getVideoGroups())) {
                 if (isEmpty(context.getSelectedImages())) {
-                    context.setSelectedImages(pickBestImages(context.getScoredImageGroups()));
-                    saveContext(context);
+                    if (request.imageScoringEnabledValue()) {
+                        context.setSelectedImages(pickBestImages(context.getScoredImageGroups()));
+                        saveContext(context);
+                    } else {
+                        markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
+                        return;
+                    }
                 }
                 markStage(taskId, TaskStage.VIDEO_GENERATING);
                 List<ShotVideoGroup> videoGroups = generateVideos(request, context.getVideoConfig(), context.getSelectedImages());
                 context.setVideoGroups(videoGroups);
-                context.setScoredVideoGroups(evaluateVideos(videoGroups));
-                context.setSelectedVideos(pickBestVideos(context.getScoredVideoGroups()));
+                if (request.videoScoringEnabledValue()) {
+                    context.setScoredVideoGroups(evaluateVideos(videoGroups));
+                    context.setSelectedVideos(pickBestVideos(context.getScoredVideoGroups()));
+                } else {
+                    context.setScoredVideoGroups(List.of());
+                    context.setSelectedVideos(List.of());
+                }
                 saveContext(context);
-                markWaitingReview(taskId, TaskStage.VIDEO_GENERATING);
-                return;
+                if (shouldPauseForReview(request, TaskStage.VIDEO_GENERATING, !request.videoScoringEnabledValue())) {
+                    markWaitingReview(taskId, TaskStage.VIDEO_GENERATING);
+                    return;
+                }
             }
 
-            if (isEmpty(context.getScoredVideoGroups())) {
+            if (request.videoScoringEnabledValue() && isEmpty(context.getScoredVideoGroups())) {
                 markStage(taskId, TaskStage.VIDEO_GENERATING);
                 context.setScoredVideoGroups(evaluateVideos(context.getVideoGroups()));
                 context.setSelectedVideos(pickBestVideos(context.getScoredVideoGroups()));
                 saveContext(context);
-                markWaitingReview(taskId, TaskStage.VIDEO_GENERATING);
-                return;
+                if (shouldPauseForReview(request, TaskStage.VIDEO_GENERATING, false)) {
+                    markWaitingReview(taskId, TaskStage.VIDEO_GENERATING);
+                    return;
+                }
             }
 
             if (context.getFinalVideo() == null) {
                 if (isEmpty(context.getSelectedVideos())) {
-                    context.setSelectedVideos(pickBestVideos(context.getScoredVideoGroups()));
-                    saveContext(context);
+                    if (request.videoScoringEnabledValue()) {
+                        context.setSelectedVideos(pickBestVideos(context.getScoredVideoGroups()));
+                        saveContext(context);
+                    } else {
+                        markWaitingReview(taskId, TaskStage.VIDEO_GENERATING);
+                        return;
+                    }
                 }
                 markStage(taskId, TaskStage.FINAL_COMPOSING);
                 context.setFinalVideo(composeFinalVideo(taskId, request, context.getVideoConfig(), context.getSelectedVideos()));
@@ -349,6 +383,9 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 patch.duration() == null ? current.duration() : patch.duration(),
                 patch.aspectRatio() == null ? current.aspectRatio() : patch.aspectRatio(),
                 patch.style() == null ? current.style() : patch.style(),
+                patch.imageScoringEnabled() == null ? current.imageScoringEnabled() : patch.imageScoringEnabled(),
+                patch.videoScoringEnabled() == null ? current.videoScoringEnabled() : patch.videoScoringEnabled(),
+                patch.autoConfirmEnabled() == null ? current.autoConfirmEnabled() : patch.autoConfirmEnabled(),
                 patch.generateImageCount() == null ? current.generateImageCount() : patch.generateImageCount(),
                 patch.generateVideoCount() == null ? current.generateVideoCount() : patch.generateVideoCount()
         );
@@ -1168,9 +1205,19 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 task.getDuration(),
                 task.getAspectRatio(),
                 task.getStyle(),
+                false,
+                false,
+                false,
                 2,
                 1
         );
+    }
+
+    private boolean shouldPauseForReview(CreateVideoTaskRequest request, TaskStage stage, boolean manualSelectionRequired) {
+        if (manualSelectionRequired) {
+            return true;
+        }
+        return !request.autoConfirmEnabledValue();
     }
 
     private GenerateRequest toGenerateRequest(CreateVideoTaskRequest request) {
