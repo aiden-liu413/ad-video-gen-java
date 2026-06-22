@@ -1344,6 +1344,11 @@ function RegenerateControls({
     ...regenerateDraft,
     shots: regenerateDraft.shots.map((shot) => shot.shotId === shotId ? { ...shot, ...patch } : shot)
   });
+  const uploadShotReference = async (shotId: string, file: File | null) => {
+    if (!file) return;
+    const reference = await fileToJpegDataUrl(file);
+    updateShot(shotId, { reference });
+  };
   const stageOptions = task.workflowType === "video_storyboard_ad"
     ? [
       { value: "SHOT_SCRIPT_GENERATING" as TaskStage, label: "视频理解与分镜" },
@@ -1438,6 +1443,24 @@ function RegenerateControls({
                   <textarea value={shot.prompt} onChange={(event) => updateShot(shot.shotId, { prompt: event.target.value })} />
                   <input value={shot.action} onChange={(event) => updateShot(shot.shotId, { action: event.target.value })} />
                   <input value={shot.words} onChange={(event) => updateShot(shot.shotId, { words: event.target.value })} />
+                  {task.workflowType === "video_storyboard_ad" && (
+                    <div className="regen-shot-reference">
+                      <span>分镜参考图</span>
+                      {isRenderableImage(shot.reference) ? (
+                        <img src={shot.reference} alt={`${shot.shotId}-regen-reference`} />
+                      ) : (
+                        <div className="regen-shot-reference-empty">未上传参考图，将只按当前分镜文案生成候选图片</div>
+                      )}
+                      <label className="shot-upload-button">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => void uploadShotReference(shot.shotId, event.target.files?.[0] ?? null)}
+                        />
+                        <span>{shot.reference ? "替换参考图" : "上传参考图"}</span>
+                      </label>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
