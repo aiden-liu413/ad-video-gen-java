@@ -318,11 +318,16 @@ pre {
 
 .create-layout {
   max-width: 1320px;
+  width: 100%;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.25fr) minmax(300px, 0.85fr);
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.2fr) minmax(0, 0.85fr);
   gap: 26px;
   align-items: start;
+}
+
+.create-layout > * {
+  min-width: 0;
 }
 
 .hero-copy {
@@ -452,6 +457,7 @@ pre {
 .config-card {
   display: grid;
   gap: 20px;
+  min-width: 0;
 }
 
 .config-card h3,
@@ -576,6 +582,7 @@ pre {
 
 .upload-zone {
   min-height: 220px;
+  display: grid;
   place-items: center;
   text-align: center;
   border: 1px dashed #9fc8d4;
@@ -583,11 +590,15 @@ pre {
   background: linear-gradient(180deg, #f9fdff, #edf8fb);
   color: #517086;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .upload-zone strong {
   color: #163047;
   font-size: 18px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .upload-zone input {
@@ -1390,6 +1401,21 @@ blockquote {
   }
 }
 
+@media (max-width: 1360px) {
+  .create-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .hero-copy {
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+
+  .process-board {
+    max-width: none;
+  }
+}
+
 @media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 230px minmax(0, 1fr);
@@ -1403,11 +1429,7 @@ blockquote {
   }
 
   .hero-copy {
-    padding-top: 0;
-  }
-
-  .process-board {
-    max-width: none;
+    grid-column: auto;
   }
 }
 
