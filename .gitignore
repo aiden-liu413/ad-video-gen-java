@@ -11,3 +11,4 @@ ad-video-gen-java-*.tar
 *.iml
 *.log
 .DS_Store
+/docker/dockerRun.cmd
