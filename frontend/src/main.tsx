@@ -4,7 +4,6 @@ import {
   Archive,
   BarChart3,
   BookOpen,
-  ChevronDown,
   Check,
   CheckCircle2,
   Clapperboard,
@@ -893,11 +892,8 @@ function CreateTaskView({
           <h2>素材、需求、配置</h2>
           <p>{selectedWorkflow.description}</p>
         </div>
-        <details className="process-board" aria-label="核心流程设计图和理念">
-          <summary>
-            <span>查看流程说明</span>
-            <ChevronDown size={16} />
-          </summary>
+        <section className="process-board" aria-label="核心流程设计图和理念">
+          <div className="process-kicker">流程说明</div>
           <div className="process-line">
             <ProcessStep icon={<UploadCloud size={18} />} title="素材输入" text={form.workflowType === "video_storyboard_ad" ? "本地视频或视频链接作为分镜理解源，图片素材作为可选参考。" : "本地图片或图片链接作为商品视觉锚点。"} />
             <ProcessStep icon={<BarChart3 size={18} />} title={form.workflowType === "video_storyboard_ad" ? "视频理解" : "营销策划"} text={form.workflowType === "video_storyboard_ad" ? "LLM 总结原视频的关键镜头并输出可编辑分镜。" : "LLM 提炼商品名称、目标人群、核心卖点和投放建议。"} />
@@ -911,7 +907,7 @@ function CreateTaskView({
             <b>设计理念</b>
             <span>AI 负责生成候选方案，人负责确认方向；每个节点先沉淀结构化结果，再进入下一步，让广告生成过程可追踪、可编辑、可重试。</span>
           </div>
-        </details>
+        </section>
       </section>
       <section className="input-card">
         <div className="card-title">
@@ -989,7 +985,7 @@ function CreateTaskView({
           <span>2</span>
           <div>
             <h3>生成配置</h3>
-            <p>确认平台、时长、比例和自动化策略。</p>
+            <p>确认平台、规格、风格和自动化策略。</p>
           </div>
         </div>
         <div className="config-section">
@@ -1032,13 +1028,13 @@ function CreateTaskView({
         <div className="config-section">
           <span className="field-label">视觉风格</span>
           <div className="style-tags">
-            {["产品特写", "真实生活方式", "测评口播", "场景种草", "促销转化"].map((style) => (
+            {["电商产品展示", "真人口播测评", "生活方式种草", "开箱演示", "痛点对比", "促销转化", "品牌质感", "教程步骤"].map((style) => (
               <button type="button" key={style} className={form.style.includes(style) ? "active" : ""} onClick={() => setFormValue("style", style, setForm)}>
                 {style}
               </button>
             ))}
           </div>
-          <textarea value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="输入自定义风格描述..." />
+          <input value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="自定义风格描述" />
         </div>
         <div className="summary-flags">
           <label className="summary-flag-toggle">

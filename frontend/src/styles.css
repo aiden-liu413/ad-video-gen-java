@@ -296,14 +296,15 @@ pre {
 .preset-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .preset-row button {
   min-width: 0;
-  min-height: 38px;
+  min-height: 32px;
   padding: 0 8px;
   font-weight: 750;
+  font-size: 12px;
 }
 
 .preset-row button.active {
@@ -376,8 +377,8 @@ pre {
   width: 100%;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(320px, 0.72fr);
-  gap: 22px;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.2fr) minmax(0, 0.85fr);
+  gap: 24px;
   align-items: start;
 }
 
@@ -386,12 +387,7 @@ pre {
 }
 
 .hero-copy {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
-  gap: 20px;
-  align-items: start;
-  padding-top: 0;
+  padding-top: 24px;
 }
 
 .create-title {
@@ -420,27 +416,22 @@ pre {
 }
 
 .process-board {
-  margin-top: 0;
-  max-width: none;
-  padding: 12px 14px;
+  margin-top: 24px;
+  max-width: 360px;
+  padding: 16px;
   border: 1px solid rgba(169, 205, 218, 0.88);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.76);
 }
 
-.process-board summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+.process-kicker {
+  margin-bottom: 12px;
   color: #178aa1;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 850;
-  cursor: pointer;
 }
 
 .process-line {
-  margin-top: 14px;
   position: relative;
   display: grid;
   gap: 12px;
@@ -449,7 +440,7 @@ pre {
 .process-line::before {
   content: "";
   position: absolute;
-  left: 17px;
+  left: 15px;
   top: 14px;
   bottom: 14px;
   width: 2px;
@@ -459,15 +450,15 @@ pre {
 .process-step {
   position: relative;
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
 }
 
 .process-icon {
   z-index: 1;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border: 1px solid #9ed5e1;
@@ -478,9 +469,8 @@ pre {
 
 .process-step b {
   display: block;
-  margin-top: 1px;
   color: #15304a;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .process-step span {
@@ -492,8 +482,8 @@ pre {
 }
 
 .process-principle {
-  margin-top: 16px;
-  padding-top: 14px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid #d6e8ef;
 }
 
@@ -530,8 +520,12 @@ pre {
 .input-card,
 .config-card {
   display: grid;
-  gap: 20px;
+  gap: 14px;
   min-width: 0;
+}
+
+.config-card {
+  align-content: start;
 }
 
 .config-card h3,
@@ -571,7 +565,7 @@ pre {
 
 .config-section {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .source-tabs {
@@ -712,6 +706,15 @@ pre {
   gap: 12px;
 }
 
+.config-card .metric-row {
+  gap: 10px;
+}
+
+.config-card input,
+.config-card select {
+  padding: 8px 10px;
+}
+
 .field-label {
   display: block;
   margin-bottom: 8px;
@@ -724,16 +727,17 @@ pre {
 .style-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .platforms button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-width: 112px;
-  padding: 0 14px;
+  gap: 6px;
+  min-width: 88px;
+  min-height: 34px;
+  padding: 0 10px;
 }
 
 .platforms button span {
@@ -750,6 +754,12 @@ pre {
   color: #087a91;
   font-size: 12px;
   font-weight: 700;
+}
+
+.style-tags button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .workflow-page {
@@ -1383,24 +1393,25 @@ pre {
 
 .summary-flags {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .submit-summary {
   display: grid;
-  gap: 8px;
-  padding: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
   border: 1px solid #d5e4ec;
   border-radius: 8px;
   background: #f8fdff;
 }
 
 .submit-summary span {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  gap: 3px;
   color: #6a7f91;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .submit-summary b {
@@ -1410,20 +1421,21 @@ pre {
 }
 
 .summary-flag-toggle {
-  min-height: 40px;
-  display: flex;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
   border: 1px solid #d4e1ea;
   border-radius: 8px;
-  padding: 9px 11px;
+  padding: 8px 9px;
   background: #f8fdff;
   color: #637789;
 }
 
 .summary-flag-toggle span {
   color: #163047;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -1727,21 +1739,6 @@ blockquote {
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-@media (max-width: 1360px) {
-  .create-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .hero-copy {
-    grid-column: 1 / -1;
-    padding-top: 0;
-  }
-
-  .process-board {
-    max-width: none;
   }
 }
 
