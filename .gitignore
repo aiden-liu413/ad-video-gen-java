@@ -5,6 +5,9 @@ data/
 frontend/node_modules/
 frontend/dist/
 docker/ffmpeg/*.tar.xz
+docker/ffmpeg/ffmpeg
+docker/ffmpeg/*.zip
+ad-video-gen-java-*.tar
 *.iml
 *.log
 .DS_Store
