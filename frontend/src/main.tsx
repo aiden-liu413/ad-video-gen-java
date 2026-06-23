@@ -1,9 +1,10 @@
-import React, { Fragment, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Archive,
   BarChart3,
   BookOpen,
+  ChevronDown,
   Check,
   CheckCircle2,
   Clapperboard,
@@ -15,9 +16,12 @@ import {
   Music2,
   Plus,
   Rocket,
+  RotateCcw,
+  Search,
   Sparkles,
   UploadCloud,
   Video,
+  X,
 } from "lucide-react";
 import "./styles.css";
 
@@ -224,6 +228,17 @@ type VideoScoreDraftGroup = {
   videos: ScoreDraftAsset[];
 };
 
+type ScoreEditorMode = "image" | "video";
+
+type ScoreDraftGroup = {
+  shotId: string;
+  prompt?: string;
+  action?: string;
+  words?: string;
+  images?: ScoreDraftAsset[];
+  videos?: ScoreDraftAsset[];
+};
+
 type FormState = {
   workflowType: WorkflowType;
   inputType: "product_image" | "source_video";
@@ -291,7 +306,7 @@ const initialForm: FormState = {
   platform: "douyin",
   duration: "15",
   aspectRatio: "9:16",
-  style: "赛博朋克",
+  style: "产品特写",
   imageScoringEnabled: false,
   videoScoringEnabled: false,
   autoConfirmEnabled: false,
@@ -367,9 +382,9 @@ const stages: Array<{ stage: TaskStage; label: string; icon: React.ReactNode }> 
   { stage: "COMPLETED", label: "完成", icon: <CheckCircle2 size={16} /> }
 ];
 
-const workflowOptions: Array<{ value: WorkflowType; label: string; description: string }> = [
-  { value: "product_image_ad", label: "商品图生成广告", description: "从商品图片和文字需求出发，先做营销策划再生成广告。" },
-  { value: "video_storyboard_ad", label: "视频素材拆解生成广告", description: "从视频素材总结分镜，再生成图片候选、分镜视频和最终广告。" }
+const workflowOptions: Array<{ value: WorkflowType; label: string; shortLabel: string; description: string }> = [
+  { value: "product_image_ad", label: "商品图生成广告", shortLabel: "商品图", description: "从商品图片和文字需求出发，先做营销策划再生成广告。" },
+  { value: "video_storyboard_ad", label: "视频素材拆解生成广告", shortLabel: "视频素材", description: "从视频素材总结分镜，再生成图片候选、分镜视频和最终广告。" }
 ];
 
 function App() {
@@ -780,26 +795,66 @@ function Sidebar({
   activeTaskId: string;
   onSelectTask: (taskId: string) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [workflowFilter, setWorkflowFilter] = useState<"ALL" | WorkflowType>("ALL");
+  const filteredTasks = tasks.filter((item) => {
+    const keyword = query.trim().toLowerCase();
+    const matchesKeyword = !keyword
+      || item.taskId.toLowerCase().includes(keyword)
+      || (item.productName ?? "").toLowerCase().includes(keyword);
+    const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
+    const matchesWorkflow = workflowFilter === "ALL" || item.workflowType === workflowFilter;
+    return matchesKeyword && matchesStatus && matchesWorkflow;
+  });
   return (
     <aside className="sidebar">
       <section>
         <h2>历史任务</h2>
-        <p>任务管理中心</p>
+        <p>{tasks.length} 个任务</p>
       </section>
+      <div className="history-tools">
+        <label className="search-box" aria-label="搜索任务">
+          <Search size={16} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索标题或 ID" />
+        </label>
+        <div className="filter-row">
+          <label>
+            状态
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="ALL">全部</option>
+              <option value="RUNNING">进行中</option>
+              <option value="WAITING_REVIEW">待审核</option>
+              <option value="SUCCESS">已完成</option>
+              <option value="FAILED">失败</option>
+            </select>
+          </label>
+          <label>
+            流程
+            <select value={workflowFilter} onChange={(event) => setWorkflowFilter(event.target.value as "ALL" | WorkflowType)}>
+              <option value="ALL">全部</option>
+              {workflowOptions.map((item) => <option key={item.value} value={item.value}>{item.shortLabel}</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
       <div className="activity-title">活动历史</div>
       <div className="history-list">
-        {tasks.map((item) => (
+        {filteredTasks.map((item) => (
           <button
             key={item.taskId}
             className={`history-card ${item.taskId === activeTaskId ? "active" : ""}`}
             onClick={() => onSelectTask(item.taskId)}
           >
-            <span>{shortId(item.taskId)}</span>
-            <b>{statusText(item.status)}</b>
-            <p>{summaryTitle(item.productName)}</p>
+            <span>{shortId(item.taskId)} · {workflowLabel(item.workflowType)}</span>
+            <b>{summaryTitle(item.productName)}</b>
+            <p>{statusText(item.status)} · {stageText(item.workflowType, item.currentStep)}</p>
+            <small>{formatDateTime(item.updatedAt)}</small>
+            {item.status === "FAILED" && <em>失败</em>}
           </button>
         ))}
         {tasks.length === 0 && <div className="empty">暂无任务</div>}
+        {tasks.length > 0 && filteredTasks.length === 0 && <div className="empty">没有匹配任务</div>}
       </div>
     </aside>
   );
@@ -826,16 +881,23 @@ function CreateTaskView({
   message: string;
   onSubmit: (event: React.FormEvent) => void;
 }) {
+  const selectedWorkflow = workflowOptions.find((item) => item.value === form.workflowType) ?? workflowOptions[0];
+  const sourceReady = form.workflowType === "video_storyboard_ad"
+    ? Boolean(videoFile || form.sourceVideoUrl.trim())
+    : Boolean(imageFile || form.imageUrls.trim());
   return (
     <form className="create-layout" onSubmit={onSubmit}>
       <section className="hero-copy">
-        <h2>初始化生成</h2>
-        <p>{form.workflowType === "video_storyboard_ad"
-          ? "上传视频素材或填写视频链接，先做视频理解分镜，再进入图片与分镜视频候选流程。"
-          : "上传本地商品图片，或粘贴图片链接，再定义电影级输出的风格轨迹。"}
-        </p>
-        <div className="process-board" aria-label="核心流程设计图和理念">
-          <div className="process-kicker">核心流程设计</div>
+        <div className="create-title">
+          <span>新建任务</span>
+          <h2>素材、需求、配置</h2>
+          <p>{selectedWorkflow.description}</p>
+        </div>
+        <details className="process-board" aria-label="核心流程设计图和理念">
+          <summary>
+            <span>查看流程说明</span>
+            <ChevronDown size={16} />
+          </summary>
           <div className="process-line">
             <ProcessStep icon={<UploadCloud size={18} />} title="素材输入" text={form.workflowType === "video_storyboard_ad" ? "本地视频或视频链接作为分镜理解源，图片素材作为可选参考。" : "本地图片或图片链接作为商品视觉锚点。"} />
             <ProcessStep icon={<BarChart3 size={18} />} title={form.workflowType === "video_storyboard_ad" ? "视频理解" : "营销策划"} text={form.workflowType === "video_storyboard_ad" ? "LLM 总结原视频的关键镜头并输出可编辑分镜。" : "LLM 提炼商品名称、目标人群、核心卖点和投放建议。"} />
@@ -849,13 +911,18 @@ function CreateTaskView({
             <b>设计理念</b>
             <span>AI 负责生成候选方案，人负责确认方向；每个节点先沉淀结构化结果，再进入下一步，让广告生成过程可追踪、可编辑、可重试。</span>
           </div>
-        </div>
+        </details>
       </section>
       <section className="input-card">
-        <div className="workflow-inline-tabs" aria-label="工作流类型切换">
-          {workflowOptions.map((item, index) => (
-            <Fragment key={item.value}>
-              {index > 0 && <span className="workflow-inline-separator">|</span>}
+        <div className="card-title">
+          <span>1</span>
+          <div>
+            <h3>素材与需求</h3>
+            <p>先确定输入来源，再补充广告生成要求。</p>
+          </div>
+        </div>
+        <div className="workflow-segments" aria-label="工作流类型切换">
+          {workflowOptions.map((item) => (
               <button
                 type="button"
                 className={form.workflowType === item.value ? "active" : ""}
@@ -869,9 +936,9 @@ function CreateTaskView({
                     : previous.text
                 }))}
               >
-                {item.value === "product_image_ad" ? "商品图生成" : "视频解析生成"}
+                <b>{item.label}</b>
+                <span>{item.description}</span>
               </button>
-            </Fragment>
           ))}
         </div>
         {form.workflowType === "video_storyboard_ad" && (
@@ -918,7 +985,13 @@ function CreateTaskView({
         </div>
       </section>
       <aside className="config-card">
-        <h3>生成配置</h3>
+        <div className="card-title">
+          <span>2</span>
+          <div>
+            <h3>生成配置</h3>
+            <p>确认平台、时长、比例和自动化策略。</p>
+          </div>
+        </div>
         <div className="config-section">
           <span className="field-label">目标平台</span>
           <div className="platforms">
@@ -959,7 +1032,7 @@ function CreateTaskView({
         <div className="config-section">
           <span className="field-label">视觉风格</span>
           <div className="style-tags">
-            {["赛博朋克", "极简", "电影感", "黑色电影", "动漫风"].map((style) => (
+            {["产品特写", "真实生活方式", "测评口播", "场景种草", "促销转化"].map((style) => (
               <button type="button" key={style} className={form.style.includes(style) ? "active" : ""} onClick={() => setFormValue("style", style, setForm)}>
                 {style}
               </button>
@@ -993,6 +1066,11 @@ function CreateTaskView({
             />
           </label>
         </div>
+        <div className="submit-summary">
+          <span>素材状态<b>{sourceReady ? "已提供" : "待补充"}</b></span>
+          <span>工作流<b>{selectedWorkflow.shortLabel}</b></span>
+          <span>输出规格<b>{platformLabel(form.platform)} · {form.duration || "-"}s · {form.aspectRatio}</b></span>
+        </div>
         {message && <div className="message">{message}</div>}
         <button className="primary big" disabled={busy}>
           {busy ? <Loader2 className="spin" size={20} /> : <Sparkles size={22} />}
@@ -1018,6 +1096,7 @@ function ProcessStep({ icon, title, text }: { icon: React.ReactNode; title: stri
 function WorkflowView(props: WorkflowViewProps) {
   const { task } = props;
   const [viewStage, setViewStage] = useState<TaskStage>(canonicalStage(task.stage));
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
   const readOnly = canonicalStage(viewStage) !== canonicalStage(task.stage);
   const workflowStages = stagesForWorkflow(task.workflowType);
 
@@ -1033,7 +1112,7 @@ function WorkflowView(props: WorkflowViewProps) {
             <h2>{viewStage === "COMPLETED" ? finalTitle(task) : stageText(task.workflowType, viewStage)}</h2>
             <span className={`status ${task.status.toLowerCase()}`}>{statusText(task.status)}</span>
           </div>
-          <p>任务 ID: <span>{task.taskId}</span> · 当前流程：{stageText(task.workflowType, task.stage)} · 正在查看：{stageText(task.workflowType, viewStage)}</p>
+          <p>任务 ID: <span>{task.taskId}</span></p>
         </div>
         <div className="workflow-actions">
           <button onClick={props.onSaveEdits} disabled={props.busy || readOnly || !canEdit(task.stage)}>保存草稿</button>
@@ -1041,8 +1120,13 @@ function WorkflowView(props: WorkflowViewProps) {
             {props.busy ? <Loader2 className="spin" size={18} /> : <Rocket size={18} />}
             {nextLabel(task.workflowType, task.stage)}
           </button>
+          <button type="button" onClick={() => setRegenerateOpen(true)} disabled={props.busy || task.status === "RUNNING"}>
+            <RotateCcw size={18} />
+            重新生成
+          </button>
         </div>
       </section>
+      <TaskSummaryBar task={task} viewingStage={viewStage} />
       <StageStepper current={task.stage} viewing={viewStage} status={task.status} task={task} onSelect={setViewStage} items={workflowStages} />
       {props.message && <div className="message">{props.message}</div>}
       {hasTaskError(task) && <ErrorPanel task={task} />}
@@ -1050,9 +1134,61 @@ function WorkflowView(props: WorkflowViewProps) {
       <section className="stage-canvas">
         <StageContent {...props} viewStage={viewStage} readOnly={readOnly} />
       </section>
-      <footer className="bottom-bar">
-        <RegenerateControls {...props} />
-      </footer>
+      {regenerateOpen && (
+        <RegenerateDrawer onClose={() => setRegenerateOpen(false)}>
+          <RegenerateControls {...props} />
+        </RegenerateDrawer>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 功能描述：展示任务详情页的关键上下文，帮助用户快速判断当前待办和生成配置。
+ * 参数解释：task 表示当前任务详情；viewingStage 表示用户正在查看的流程节点。
+ * 返回对象描述：返回任务摘要条的 React 节点。
+ * 可能抛出的异常：无。
+ */
+function TaskSummaryBar({ task, viewingStage }: { task: TaskDetail; viewingStage: TaskStage }) {
+  const flags = [
+    task.request?.imageScoringEnabled ? "图片评分" : "",
+    task.request?.videoScoringEnabled ? "视频评分" : "",
+    task.request?.autoConfirmEnabled ? "自动确认" : ""
+  ].filter(Boolean);
+  return (
+    <section className="task-summary-bar">
+      <span>工作流<b>{workflowLabel(task.workflowType)}</b></span>
+      <span>当前阶段<b>{stageText(task.workflowType, task.stage)}</b></span>
+      <span>正在查看<b>{stageText(task.workflowType, viewingStage)}</b></span>
+      <span>规格<b>{platformLabel(task.request?.platform ?? task.videoConfig?.platform)} · {task.request?.duration ?? task.videoConfig?.duration ?? "-"}s · {task.request?.aspectRatio ?? task.videoConfig?.aspectRatio ?? "-"}</b></span>
+      <span>更新时间<b>{formatDateTime(task.updatedAt)}</b></span>
+      <span>策略<b>{flags.length > 0 ? flags.join(" / ") : "人工确认"}</b></span>
+    </section>
+  );
+}
+
+/**
+ * 功能描述：为重新生成表单提供右侧抽屉容器，避免重燃表单常驻占用主流程空间。
+ * 参数解释：children 表示抽屉主体内容；onClose 表示关闭抽屉的回调函数。
+ * 返回对象描述：返回包含遮罩、标题栏和主体内容的 React 节点。
+ * 可能抛出的异常：无。
+ */
+function RegenerateDrawer({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="drawer-layer" role="dialog" aria-modal="true" aria-label="重新生成">
+      <button className="drawer-mask" type="button" onClick={onClose} aria-label="关闭重新生成抽屉" />
+      <aside className="drawer-panel">
+        <header>
+          <div>
+            <span>重新生成</span>
+            <h3>从指定阶段重跑后续内容</h3>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭重新生成抽屉">
+            <X size={18} />
+          </button>
+        </header>
+        {children}
+      </aside>
     </div>
   );
 }
@@ -1111,7 +1247,8 @@ function StageStepper({
             onClick={() => onSelect(item.stage)}
           >
             <span>{done ? <Check size={18} /> : item.icon}</span>
-            {active && status === "WAITING_REVIEW" && <b>WAITING_REVIEW</b>}
+            {active && status === "WAITING_REVIEW" && <b>待审核</b>}
+            {active && status === "RUNNING" && <b>执行中</b>}
             <small>{item.label}</small>
           </button>
         );
@@ -1258,9 +1395,10 @@ function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOn
 }
 
 function ImageGenerateStage({ task, selectedImages, setSelectedImages, onSaveSelections, readOnly }: StageViewProps) {
+  const missingCount = countMissingSelections(task.imageGroups, selectedImages, "images");
   return (
     <div className="panel-card">
-      <div className="section-head"><h3>生成图片候选</h3><span>{task.imageGroups.length} 组分镜</span></div>
+      <div className="section-head"><h3>生成图片候选</h3><span>{missingCount === 0 ? "已完成选择" : `${missingCount} 组待选择`}</span></div>
       <MediaGrid groups={task.imageGroups} selected={selectedImages} onSelect={setSelectedImages} type="image" readOnly={readOnly} />
       <button className="secondary" onClick={onSaveSelections} disabled={readOnly}>保存选择</button>
     </div>
@@ -1276,8 +1414,14 @@ function ImageEvaluateStage({ task, selectedImages, setSelectedImages, imageScor
       </section>
       <aside className="panel-card review-panel">
         <h3>评分数据编辑</h3>
-        <p className="hint">这里只保留评分、原因和选中状态，图片 URL 与上传图片 Base64 已隐藏。</p>
-        <textarea readOnly={readOnly} value={imageScoresJson} onChange={(event) => setImageScoresJson(event.target.value)} />
+        <p className="hint">默认使用结构化表格编辑评分、原因和选中状态，原始 JSON 保留在高级区。</p>
+        <ScoreEditor
+          mode="image"
+          value={imageScoresJson}
+          readOnly={readOnly}
+          onChange={setImageScoresJson}
+          onSelect={setSelectedImages}
+        />
         <div className="split-actions">
           <button onClick={onSaveSelections} disabled={readOnly}>保存选择</button>
           <button className="secondary" onClick={onSaveEdits} disabled={readOnly}>应用更改</button>
@@ -1288,9 +1432,10 @@ function ImageEvaluateStage({ task, selectedImages, setSelectedImages, imageScor
 }
 
 function VideoGenerateStage({ task, selectedVideos, setSelectedVideos, onSaveSelections, readOnly }: StageViewProps) {
+  const missingCount = countMissingSelections(task.videoGroups, selectedVideos, "videos");
   return (
     <div className="panel-card">
-      <div className="section-head"><h3>分镜视频候选</h3><span>{task.videoGroups.length} 组分镜</span></div>
+      <div className="section-head"><h3>分镜视频候选</h3><span>{missingCount === 0 ? "已完成选择" : `${missingCount} 组待选择`}</span></div>
       <MediaGrid groups={task.videoGroups} selected={selectedVideos} onSelect={setSelectedVideos} type="video" readOnly={readOnly} />
       <button className="secondary" onClick={onSaveSelections} disabled={readOnly}>保存选择</button>
     </div>
@@ -1306,8 +1451,14 @@ function VideoEvaluateStage({ task, selectedVideos, setSelectedVideos, videoScor
       </section>
       <aside className="panel-card review-panel">
         <h3>评分数据编辑</h3>
-        <p className="hint">这里只保留评分、原因和选中状态，视频 URL 已隐藏。</p>
-        <textarea readOnly={readOnly} value={videoScoresJson} onChange={(event) => setVideoScoresJson(event.target.value)} />
+        <p className="hint">默认使用结构化表格编辑评分、原因和选中状态，原始 JSON 保留在高级区。</p>
+        <ScoreEditor
+          mode="video"
+          value={videoScoresJson}
+          readOnly={readOnly}
+          onChange={setVideoScoresJson}
+          onSelect={setSelectedVideos}
+        />
         <div className="split-actions">
           <button onClick={onSaveSelections} disabled={readOnly}>保存选择</button>
           <button className="secondary" onClick={onSaveEdits} disabled={readOnly}>应用更改</button>
@@ -1342,11 +1493,123 @@ function FinalStage({ task }: { task: TaskDetail }) {
           <h3>分享链接</h3>
           <div className="copy-line">
             <input readOnly value={task.finalVideo?.videoUrl ?? ""} />
-            <button onClick={() => navigator.clipboard.writeText(task.finalVideo?.videoUrl ?? "")}><Copy size={20} /></button>
+            <button disabled={!task.finalVideo?.videoUrl} onClick={() => navigator.clipboard.writeText(task.finalVideo?.videoUrl ?? "")}><Copy size={20} /></button>
           </div>
-          <button className="primary"><Download size={18} />下载高清视频</button>
+          <a className={`download-button ${task.finalVideo?.videoUrl ? "" : "disabled"}`} href={task.finalVideo?.videoUrl || undefined} download target="_blank" rel="noreferrer">
+            <Download size={18} />下载高清视频
+          </a>
         </section>
       </aside>
+    </div>
+  );
+}
+
+/**
+ * 功能描述：用结构化表单编辑图片或视频评分草稿，并同步当前分镜的选中素材。
+ * 参数解释：mode 表示评分对象类型；value 表示评分 JSON 字符串；readOnly 表示是否只读；onChange 用于回写 JSON；onSelect 用于同步选中素材。
+ * 返回对象描述：返回分镜评分编辑表单的 React 节点。
+ * 可能抛出的异常：无；当 JSON 无法解析时返回错误提示。
+ */
+function ScoreEditor({
+  mode,
+  value,
+  readOnly,
+  onChange,
+  onSelect
+}: {
+  mode: ScoreEditorMode;
+  value: string;
+  readOnly: boolean;
+  onChange: (value: string) => void;
+  onSelect: (value: Record<string, string>) => void;
+}) {
+  const assetKey = mode === "image" ? "images" : "videos";
+  const groups = parseScoreDraft(value);
+  if (!groups) {
+    return (
+      <div className="score-editor">
+        <div className="message">评分 JSON 无法解析，请在高级区修正格式。</div>
+        <details className="json-details" open>
+          <summary>原始 JSON</summary>
+          <textarea readOnly={readOnly} value={value} onChange={(event) => onChange(event.target.value)} />
+        </details>
+      </div>
+    );
+  }
+
+  const updateAsset = (shotId: string, assetId: string, patch: Partial<ScoreDraftAsset>) => {
+    const nextGroups = groups.map((group) => {
+      if (group.shotId !== shotId) return group;
+      const assets = group[assetKey] as ScoreDraftAsset[];
+      return {
+        ...group,
+        [assetKey]: assets.map((asset) => asset.assetId === assetId ? { ...asset, ...patch } : asset)
+      };
+    });
+    onChange(JSON.stringify(nextGroups, null, 2));
+  };
+
+  const chooseAsset = (shotId: string, assetId: string) => {
+    const nextGroups = groups.map((group) => {
+      if (group.shotId !== shotId) return group;
+      const assets = group[assetKey] as ScoreDraftAsset[];
+      return {
+        ...group,
+        [assetKey]: assets.map((asset) => ({ ...asset, selected: asset.assetId === assetId }))
+      };
+    });
+    onChange(JSON.stringify(nextGroups, null, 2));
+    onSelect(selectedFromScoreGroups(nextGroups, assetKey));
+  };
+
+  return (
+    <div className="score-editor">
+      <div className="score-table">
+        {groups.map((group) => {
+          const assets = group[assetKey] as ScoreDraftAsset[];
+          return (
+            <section className="score-group" key={group.shotId}>
+              <header>
+                <b>{group.shotId}</b>
+                <span>{assets.length} 个候选 · {assets.some((asset) => asset.selected) ? "已选择" : "待选择"}</span>
+              </header>
+              {assets.map((asset) => (
+                <div className="score-row" key={asset.assetId}>
+                  <label className="score-radio">
+                    <input
+                      type="radio"
+                      name={`score-${mode}-${group.shotId}`}
+                      checked={Boolean(asset.selected)}
+                      disabled={readOnly}
+                      onChange={() => chooseAsset(group.shotId, asset.assetId)}
+                    />
+                    <span>{asset.id}</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={asset.score ?? ""}
+                    readOnly={readOnly}
+                    placeholder="评分"
+                    onChange={(event) => updateAsset(group.shotId, asset.assetId, { score: Number(event.target.value || 0) })}
+                  />
+                  <input
+                    value={asset.reason ?? ""}
+                    readOnly={readOnly}
+                    placeholder="评分原因"
+                    onChange={(event) => updateAsset(group.shotId, asset.assetId, { reason: event.target.value })}
+                  />
+                </div>
+              ))}
+            </section>
+          );
+        })}
+      </div>
+      <details className="json-details">
+        <summary>高级：查看原始 JSON</summary>
+        <textarea readOnly={readOnly} value={value} onChange={(event) => onChange(event.target.value)} />
+      </details>
     </div>
   );
 }
@@ -1365,32 +1628,47 @@ function MediaGrid({
   readOnly?: boolean;
 }) {
   return (
-    <div className="media-grid">
-      {groups.flatMap((group) => {
+    <div className="media-groups">
+      {groups.map((group) => {
         const assets = "images" in group ? group.images : group.videos;
-        return assets.map((asset) => (
-          <button
-            type="button"
-            className={`media-card ${selected[group.shotId] === asset.assetId ? "selected" : ""}`}
-            key={asset.assetId}
-            onClick={() => {
-              if (!readOnly) onSelect({ ...selected, [group.shotId]: asset.assetId });
-            }}
-          >
-            {type === "image" && isRenderableImage(asset.url) ? <img src={asset.url} alt={asset.assetId} /> : null}
-            {type === "video" && isRenderableVideo(asset.url) ? <video src={asset.url} controls /> : null}
-            {type === "image" && !isRenderableImage(asset.url) && <div className="mock-media">{asset.url}</div>}
-            {type === "video" && !isRenderableVideo(asset.url) && <div className="mock-media">{asset.url}</div>}
-            <span>{group.shotId} · {group.duration ?? "-"}秒 · {asset.score ?? "-"} 分</span>
-            <small>{asset.reason}</small>
-            {selected[group.shotId] === asset.assetId && (
-              <>
-                <b className="checkmark"><Check size={18} /></b>
-                <em className="selected-label">已选择</em>
-              </>
-            )}
-          </button>
-        ));
+        const selectedAsset = selected[group.shotId];
+        return (
+          <section className="media-group" key={group.shotId}>
+            <header>
+              <div>
+                <b>{group.shotId}</b>
+                <span>{group.duration ?? "-"} 秒 · {assets.length} 个候选</span>
+              </div>
+              <em className={selectedAsset ? "ready" : "pending"}>{selectedAsset ? "已选择" : "待选择"}</em>
+            </header>
+            <p>{group.prompt || group.action || "暂无分镜说明"}</p>
+            <div className="media-grid">
+              {assets.map((asset) => (
+                <button
+                  type="button"
+                  className={`media-card ${selected[group.shotId] === asset.assetId ? "selected" : ""}`}
+                  key={asset.assetId}
+                  onClick={() => {
+                    if (!readOnly) onSelect({ ...selected, [group.shotId]: asset.assetId });
+                  }}
+                >
+                  {type === "image" && isRenderableImage(asset.url) ? <img src={asset.url} alt={asset.assetId} /> : null}
+                  {type === "video" && isRenderableVideo(asset.url) ? <video src={asset.url} controls muted /> : null}
+                  {type === "image" && !isRenderableImage(asset.url) && <div className="mock-media">{asset.url}</div>}
+                  {type === "video" && !isRenderableVideo(asset.url) && <div className="mock-media">{asset.url}</div>}
+                  <span>{asset.score ?? "-"} 分</span>
+                  <small>{asset.reason}</small>
+                  {selected[group.shotId] === asset.assetId && (
+                    <>
+                      <b className="checkmark"><Check size={18} /></b>
+                      <em className="selected-label">已选择</em>
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
+          </section>
+        );
       })}
     </div>
   );
@@ -1865,6 +2143,52 @@ function markSelectedInScoreJson(previous: string, selected: Record<string, stri
   }
 }
 
+/**
+ * 功能描述：解析评分草稿 JSON，并统一为评分编辑器可消费的数据结构。
+ * 参数解释：value 表示当前评分草稿 JSON 字符串。
+ * 返回对象描述：解析成功时返回评分分组数组，解析失败时返回 null。
+ * 可能抛出的异常：无；内部捕获 JSON 解析异常。
+ */
+function parseScoreDraft(value: string): ScoreDraftGroup[] | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter((item): item is ScoreDraftGroup => {
+      if (!item || typeof item !== "object") return false;
+      const group = item as ScoreDraftGroup;
+      return typeof group.shotId === "string" && (Array.isArray(group.images) || Array.isArray(group.videos));
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 功能描述：从评分分组中提取每个分镜当前选中的素材 ID。
+ * 参数解释：groups 表示评分分组数组；assetKey 表示候选素材字段名称。
+ * 返回对象描述：返回以分镜 ID 为键、素材 ID 为值的选择映射。
+ * 可能抛出的异常：无。
+ */
+function selectedFromScoreGroups(groups: ScoreDraftGroup[], assetKey: "images" | "videos") {
+  return Object.fromEntries(groups.flatMap((group) => {
+    const selectedAsset = group[assetKey]?.find((asset) => asset.selected);
+    return selectedAsset ? [[group.shotId, selectedAsset.assetId]] : [];
+  }));
+}
+
+/**
+ * 功能描述：统计候选素材分组中还没有完成选择的分镜数量。
+ * 参数解释：groups 表示候选素材分组；selected 表示当前选择映射；assetKey 表示候选素材字段名称。
+ * 返回对象描述：返回待选择的分镜数量。
+ * 可能抛出的异常：无。
+ */
+function countMissingSelections(groups: Array<ShotImageGroup | ShotVideoGroup>, selected: Record<string, string>, assetKey: "images" | "videos") {
+  return groups.filter((group) => {
+    const assets = assetKey === "images" && "images" in group ? group.images : "videos" in group ? group.videos : [];
+    return assets.length > 0 && !selected[group.shotId];
+  }).length;
+}
+
 function normalizeScore(value: unknown) {
   if (typeof value === "number") return value;
   if (typeof value === "string") {
@@ -1931,8 +2255,36 @@ function summaryTitle(value: string) {
   return value.length > 18 ? `${value.slice(0, 18)}...` : value;
 }
 
+/**
+ * 功能描述：将工作流枚举转换为界面展示名称。
+ * 参数解释：workflowType 表示任务所属的工作流类型。
+ * 返回对象描述：返回对应的中文工作流名称。
+ * 可能抛出的异常：无。
+ */
+function workflowLabel(workflowType: WorkflowType) {
+  return workflowOptions.find((item) => item.value === workflowType)?.shortLabel ?? workflowType;
+}
+
 function platformLabel(platform?: string) {
   return platformOptions.find((item) => item.value === platform)?.label ?? platform ?? "抖音";
+}
+
+/**
+ * 功能描述：格式化后端时间字段，保证历史任务和任务摘要可快速扫描。
+ * 参数解释：value 表示后端返回的时间字符串。
+ * 返回对象描述：返回本地化后的简短日期时间；当输入为空或无效时返回占位符。
+ * 可能抛出的异常：无。
+ */
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function mergeTaskImageUrls(task: TaskDetail) {
