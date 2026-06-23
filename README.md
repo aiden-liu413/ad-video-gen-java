@@ -1,52 +1,164 @@
 # ad-video-gen-java
 
-Java/Spring Boot 版本的广告视频生成 Demo，按 `volcengine/ai-app-lab/demohouse/ad_video_gen` README 中的多 Agent 和三模型分工实现。
+**AIVision Control** — 可控式 AI 营销视频工作台。上传商品图或参考视频，经多 Agent 编排完成策划、分镜、图片/视频生成与评估，人工确认后 FFmpeg 合成成片，并自动生成发布文案与话题标签。
 
-## 功能
+后端 **Spring Boot 3 + H2**，前端 **React + Vite + TypeScript**，模型接入火山方舟（Doubao / Seedream / Seedance）。
 
-- LLM：`Doubao-Seed-1.6`，负责理解用户需求、页面素材和 Agent 推理
-- 图像模型：`Doubao-Seedream 4.5 pro`，负责文生图 / 参考图生图
-- 视频模型：`Doubao-Seedance 1.0 pro`，负责图文生视频
-- 商品图广告流程：从商品图片 + 文本需求出发，依次完成营销策划、分镜脚本、图片候选、视频候选和最终合成
-- 视频拆解广告流程：从本地视频或视频 URL 出发，先做视频理解与分镜总结，再进入图片候选、分镜视频和最终广告合成
-- 市场分析 Agent：生成目标人群、卖点、关键词和创意策略
-- 导演 Agent：生成短视频标题、脚本和分镜提示词
-- 视频理解 Agent：根据上传视频总结固定结构的分镜脚本
-- 评估 Agent：输出评分、优势、风险和优化建议
-- Multimedia Agent：先调用 Seedream 生成分镜图，再调用 Seedance 生成视频
-- Release Agent：生成发布文案、话题标签和短链
-- 文档版任务状态机：`video_task` + `video_task_context` 持久化保存任务状态和上下文
-- 候选素材机制：每个分镜可生成多张候选图、多段候选视频，并支持人工选择
-- 评分开关：创建任务时可分别控制“图片评分”“视频评分”，关闭后默认不自动选材，等待人工确认
-- 自动确认开关：开启后，当前节点满足自动推进条件时会直接进入下一步；关闭后始终停在待审核态
-- 本地 FFmpeg 合成：最终视频先落盘到 `./data/final-videos`，随后上传到 S3 兼容对象存储
-- S3 兼容对象存储：本地图片/视频上传至 RustFS 等 S3 兼容服务，返回可访问 URL 供 LLM 与后续流程使用；`uploads/` 前缀对象默认 7 天过期，`final-videos/` 前缀默认不过期
-- 前端工作台：创建任务、切换两类工作流、查看历史任务、编辑阶段产物、人工选择素材、从指定阶段重新生成
+---
 
-## Prompt 对齐
+## 界面预览
 
-项目中的提示词已统一迁移为 Markdown 资源，位于 `src/main/resources/prompts`：
+| 创建任务 | 图片生成与评估 |
+|:---:|:---:|
+| ![创建任务](docs/screenshots/01-create-task.png) | ![图片评估](docs/screenshots/02-image-review.png) |
 
-- `market-agent/prompt.md`
-- `director-agent/prompt.md`
-- `video-storyboard-agent/prompt.md`
-- `evaluate-agent/prompt.md`
-- `release-agent/prompt.md`
+| 重燃抽屉 | 视频生成与评估 |
+|:---:|:---:|
+| ![重燃](docs/screenshots/03-regenerate-drawer.png) | ![视频评估](docs/screenshots/04-video-review.png) |
 
-`PromptService` 会按 `## PROMPT_XXX` 段落读取对应提示词正文。这样既保留了提示词的结构化组织，也避免把提示词硬编码散落在 Java 代码里。
+| 完成页 |
+|:---:|
+| ![完成](docs/screenshots/05-completed.png) |
 
-## 启动
+---
 
-执行 Maven 打包时会自动安装项目所需的 Node.js/npm、构建前端，并将
-`frontend/dist` 复制到 `target/classes/static` 后打入 Spring Boot JAR。
-前端构建产物只存在于 `target`，不会写入源码资源目录或加入 Git 管理。
+## 项目简介
+
+本项目将「理解需求 → 写脚本 → 生图 → 生视频 → 合成发布」拆成**可审核、可回退**的多阶段流水线，适合两类场景：
+
+| 工作流 | 标识 | 输入 | 流程特点 |
+|--------|------|------|----------|
+| **商品图生成广告** | `product_image_ad` | 商品图 + 文字需求 | 含营销策划 → 分镜脚本 → 图片/视频候选 → 合成 |
+| **视频素材拆解重制** | `video_storyboard_ad` | 参考视频 + 文字需求 | 跳过营销策划，先做视频理解与分镜，再进入图片/视频生成 |
+
+**核心交互原则**（与当前前端实现一致）：
+
+- **一阶段一主操作**：顶栏主 CTA 为「进入下一步」，阶段内底部保存，不再重复「保存草稿」
+- **先保存再前进**：有未保存修改时点击「进入下一步」会弹出确认（保存并继续 / 放弃 / 取消）
+- **人机协同**：每组分镜支持多候选图片/视频，可开启 AI 评分辅助选片
+- **回顾只读**：点击 Stepper 查看历史节点时为只读，需「返回当前阶段」才能继续编辑
+- **重燃**：右侧抽屉从指定阶段修改输入参数并重跑后续流程；图片/视频重燃表单**仅展示参数**，不展示已生成候选素材
+
+---
+
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| 后端 | Java 17、Spring Boot 3.3、H2、FFmpeg |
+| 前端 | React 18、Vite 5、TypeScript、Lucide Icons |
+| LLM | Doubao-Seed-1.6（理解、Agent 推理） |
+| 图像 | Doubao-Seedream 4.5 pro（文生图 / 参考图生图） |
+| 视频 | Doubao-Seedance 1.0 pro（图文生视频） |
+| 存储 | S3 兼容对象存储（RustFS / MinIO 等） |
+
+---
+
+## 前端工作台（当前实现）
+
+### 布局
+
+- **顶栏**：品牌「AIVision Control」、创建新任务
+- **左侧栏**：最近任务（最多 20 条）、搜索、按状态/流程筛选
+- **主画布**：当前任务阶段内容；顶栏含任务摘要、Stepper、重新生成、进入下一步
+
+### 创建任务页
+
+- 左侧 **流程说明**（素材输入 → 营销策划 → … → 人工重燃）
+- 中间 **素材与需求**：切换「商品图 / 视频素材」工作流，上传或填写链接
+- 右侧 **生成配置**：平台、时长、比例、风格标签、候选数量、图片/视频评分、自动确认
+- 未上传素材时「开始生成」禁用并提示
+
+### 分镜审核（ShotReviewCard）
+
+图片/视频评估阶段采用**按分镜聚合**的单列卡片：
+
+- 每组展示候选网格（图片 `ImageCandidateGrid` / 视频 `VideoCandidateGrid`，各候选独立播放器）
+- 进度条显示「已选 N/M 组」，支持「展开全部」一键展开评分依据与分镜详情
+- 底部 **阶段保存条**（有未保存修改时高亮）：保存分镜 / 保存图片选择 / 保存视频选择
+
+### 重燃抽屉
+
+- 选择重燃阶段与原因，编辑该阶段真正使用的输入（分镜参数、生成配置等）
+- **图片/视频生成阶段**不展示历史候选素材，仅编辑参数后「应用重燃」
+- 重燃请求会合并分镜字段（未改动的参考图等大字段不会重复上传）
+
+### 完成页
+
+- 成片预览、发布文案、话题标签、分享链接、下载高清视频
+
+---
+
+## 后端流程
+
+### 多 Agent
+
+| Agent | 职责 |
+|-------|------|
+| Market | 目标人群、卖点、创意策略（商品图流程） |
+| Director | 标题、脚本、分镜提示词 |
+| VideoStoryboard | 参考视频分镜理解（视频素材流程） |
+| Evaluate | 候选图片/视频评分与依据 |
+| Multimedia | Seedream 分镜图 → Seedance 分镜视频 |
+| Release | 发布文案、话题、成片链接 |
+
+提示词位于 `src/main/resources/prompts/`，由 `PromptService` 按 `## PROMPT_XXX` 段落加载。
+
+### 状态机
+
+后端细粒度阶段在前端 **归并展示**（`canonicalStage`）：
+
+| 后端阶段 | 前端 Stepper 展示 |
+|----------|-------------------|
+| `IMAGE_EVALUATING` / `IMAGE_SELECTING` | 图片生成与评估 |
+| `VIDEO_EVALUATING` / `VIDEO_SELECTING` | 视频生成与评估 |
+
+**商品图流程** Stepper：
+
+```text
+创建 → 营销策划 → 分镜脚本 → 图片生成与评估 → 视频生成与评估 → 最终合成 → 完成
+```
+
+**视频素材流程** Stepper（无营销策划）：
+
+```text
+创建 → 视频理解与分镜 → 图片生成与评估 → 视频生成与评估 → 最终合成 → 完成
+```
+
+任务状态：`RUNNING`（生成中，画布显示遮罩自动刷新）→ `WAITING_REVIEW`（待人工确认）→ `SUCCESS` / `FAILED`。
+
+默认逐步推进；创建时开启「自动确认」且满足条件时可自动进入下一步。保存分镜/选择或重燃后，会清空受影响的后续产物。
+
+---
+
+## 快速开始
+
+### 一键打包运行
 
 ```bash
 mvn clean package
 java -jar target/ad-video-gen-java-0.0.1-SNAPSHOT.jar
 ```
 
-可选环境变量：
+访问：`http://localhost:8080/`（前端已打入 JAR 的 `static` 目录）
+
+### 前后端分离开发
+
+```bash
+# 终端 1
+mvn spring-boot:run
+
+# 终端 2
+cd frontend && npm install && npm run dev
+```
+
+- 前端：`http://localhost:8002/`
+- 开发态 API **直连** `http://127.0.0.1:8080`（可通过 `VITE_API_BASE` 覆盖）
+- 后端需已启动，否则接口报连接失败
+
+---
+
+## 环境变量
 
 ```bash
 export ARK_API_KEY=你的方舟APIKey
@@ -65,7 +177,6 @@ export PUBLIC_BASE_URL=http://localhost:8080
 export FFMPEG_BINARY=ffmpeg
 export FFMPEG_OUTPUT_DIR=./data/final-videos
 
-# S3 兼容对象存储（RustFS / AWS S3 / 其他 S3 兼容服务）
 export S3_ENDPOINT=http://127.0.0.1:9000
 export S3_PUBLIC_BASE_URL=http://127.0.0.1:9000
 export S3_ACCESS_KEY=你的AccessKey
@@ -77,139 +188,32 @@ export S3_AUTO_CREATE_BUCKET=true
 export S3_OBJECT_EXPIRATION_DAYS=7
 ```
 
-S3 兼容对象存储相关环境变量说明：
+| 变量 | 说明 |
+|------|------|
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 未配置时上传返回 mock URL，便于本地联调 |
+| `S3_OBJECT_EXPIRATION_DAYS` | `uploads/` 前缀过期天数；`final-videos/` 不过期 |
+| `IMAGE_GENERATION_ENABLED` / `VIDEO_GENERATION_ENABLED` | 关闭时使用本地兜底内容 |
 
-| 变量 | 必填 | 默认值 | 说明 |
-|------|------|--------|------|
-| `S3_ENDPOINT` | 否 | `http://127.0.0.1:9000` | S3 API 服务地址，RustFS 可填写 RustFS API endpoint |
-| `S3_PUBLIC_BASE_URL` | 否 | 空 | 对外可访问的文件 URL 前缀；为空时使用 `S3_ENDPOINT` |
-| `S3_ACCESS_KEY` | 是 | 空 | 访问密钥 |
-| `S3_SECRET_KEY` | 是 | 空 | 秘密密钥 |
-| `S3_BUCKET` | 否 | `ad-video-gen-java` | 存储桶名称 |
-| `S3_REGION` | 否 | `us-east-1` | S3 region；RustFS 本地部署通常保持默认即可 |
-| `S3_PATH_STYLE_ACCESS` | 否 | `true` | 是否使用 path-style URL，RustFS 等自托管服务建议开启 |
-| `S3_AUTO_CREATE_BUCKET` | 否 | `true` | 启动时自动创建 bucket 并配置生命周期 |
-| `S3_OBJECT_EXPIRATION_DAYS` | 否 | `7` | `uploads/` 前缀对象过期天数；最终视频使用 `final-videos/` 前缀，默认不过期 |
+---
 
-未配置 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 时，上传接口会返回 mock URL，便于本地先跑通流程；正式使用图片/视频上传能力前需配置 RustFS 或其他 S3 兼容对象存储。
+## API 概览
 
-未配置 `ARK_API_KEY` 或未开启 `IMAGE_GENERATION_ENABLED` / `VIDEO_GENERATION_ENABLED` 时，服务会使用本地兜底内容，方便先跑通整体流程。
+基础路径：`/api/video-tasks`
 
-最终合成阶段会调用本机 FFmpeg。请确保 `ffmpeg` 在 `PATH` 中，或通过 `FFMPEG_BINARY` 指定可执行文件路径。配置 S3 兼容对象存储后，最终视频会上传到 `final-videos/` 前缀，发布信息中的短链字段直接使用对象存储 URL。
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/video-tasks` | 创建任务 |
+| `GET` | `/api/video-tasks` | 任务列表（侧边栏） |
+| `GET` | `/api/video-tasks/{id}` | 任务详情 |
+| `POST` | `/api/video-tasks/{id}/start` | 启动（CREATED → 首阶段） |
+| `POST` | `/api/video-tasks/{id}/advance` | 进入下一步 |
+| `POST` | `/api/video-tasks/{id}/context` | 保存分镜/视频参数编辑 |
+| `POST` | `/api/video-tasks/{id}/select-assets` | 保存图片/视频选择 |
+| `POST` | `/api/video-tasks/{id}/regenerate` | 从指定阶段重燃 |
+| `POST` | `/api/video-tasks/upload-image` | 上传商品图 |
+| `POST` | `/api/video-tasks/upload-video` | 上传参考视频 |
 
-## 前端工作台
-
-前端位于 `frontend` 目录，默认代理后端 `http://localhost:8080`。
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-打开：
-
-```text
-http://localhost:8002/
-```
-
-本地开发仍可单独运行 Vite；正式打包和 Docker 部署时，前端由 Spring Boot
-直接托管，无需单独部署。
-
-### 创建任务页
-
-- 左侧展示当前项目的核心流程设计图和理念说明
-- 中间输入区顶部可切换两类工作流：`商品图生成` / `视频解析生成`
-- 右侧为生成配置，包括目标平台、时长、比例、风格、评分开关和自动确认开关
-- 商品图流程支持本地图片上传或图片链接输入；本地上传会先写入 S3 兼容对象存储并返回 URL
-- 视频拆解流程支持本地视频上传或视频 URL 输入；本地上传会先写入 S3 兼容对象存储并返回 URL
-
-### 审核与重燃
-
-- 每个阶段的产物都可以在工作台查看
-- 营销策划、分镜脚本支持在线编辑后直接生效
-- 图片候选、视频候选支持人工选择，也支持在启用评分时由模型先给出评分建议
-- “重燃”支持从指定阶段重新执行，并修改该阶段需要的输入参数
-- 历史任务可以再次打开查看，切换到已完成的旧节点查看之前的中间结果
-
-## Docker 部署
-
-运行层使用精简的 Eclipse Temurin 17 UBI minimal 镜像。FFmpeg 不在镜像构建
-期间联网安装，而是从项目本地的 Linux x64 安装包复制并解压。先准备安装包：
-
-```bash
-mkdir -p docker/ffmpeg
-cp /本地路径/ffmpeg-master-latest-linux64-gpl.tar.xz docker/ffmpeg/
-```
-
-项目当前使用的安装包架构为 Linux x86_64；压缩包已排除 Git 管理。容器默认
-监听 `48080`，H2 数据库与最终视频分别持久化到两个宿主机目录：
-
-```bash
-mvn clean package
-docker build -t ad-video-gen-java .
-
-docker run -d \
-  --name ad-video-gen-java \
-  -p 48080:48080 \
-  -e ARK_API_KEY=你的方舟APIKey \
-  -e CGT_ENDPOINT_ID=你的Seedream接入点ID \
-  -e T2V_ENDPOINT_ID=你的Seedance接入点ID \
-  -e LLM_ENDPOINT_ID=你的LLM接入点ID \
-  -e PUBLIC_BASE_URL=http://你的服务暴露的ip或域名:48080 \
-  -e S3_ENDPOINT=http://host.docker.internal:9000 \
-  -e S3_PUBLIC_BASE_URL=http://你的对象存储暴露地址:9000 \
-  -e S3_ACCESS_KEY=你的AccessKey \
-  -e S3_SECRET_KEY=你的SecretKey \
-  -e S3_BUCKET=ad-video-gen-java \
-  -e S3_REGION=us-east-1 \
-  -e S3_PATH_STYLE_ACCESS=true \
-  -e S3_AUTO_CREATE_BUCKET=true \
-  -e S3_OBJECT_EXPIRATION_DAYS=7 \
-  -v "$(pwd)/docker-data/db:/app/data/db" \
-  -v "$(pwd)/docker-data/videos:/app/data/videos" \
-  ad-video-gen-java
-```
-
-容器访问宿主机 RustFS 时，`S3_ENDPOINT` 常用 `http://host.docker.internal:9000`（Linux 需 Docker 20.10+ 并加 `--add-host=host.docker.internal:host-gateway`）。RustFS 与业务容器同网部署时，可改为 `http://rustfs:9000` 等服务名。
-
-确保 bucket 对 `S3_PUBLIC_BASE_URL` 或 `S3_ENDPOINT` 对应地址可读，否则 LLM 与前端无法访问上传后的图片/视频 URL。
-
-访问地址：
-
-```text
-前端工作台：http://localhost:48080/
-H2 Console：http://localhost:48080/h2-console
-最终视频：使用接口返回的对象存储 URL，例如 http://对象存储地址:9000/ad-video-gen-java/final-videos/{日期}/{文件名}.mp4
-```
-
-容器内 H2 JDBC URL 为：
-
-```text
-jdbc:h2:file:/app/data/db/ad-video-gen;MODE=MySQL
-```
-
-工作台按设计文档中的状态机推进。商品图广告流程与视频拆解广告流程共用同一套主状态机，但前置理解节点的语义不同：
-
-```text
-CREATED
--> MARKET_PLANNING
--> SHOT_SCRIPT_GENERATING
--> IMAGE_GENERATING
--> IMAGE_EVALUATING
--> VIDEO_GENERATING
--> VIDEO_EVALUATING
--> FINAL_COMPOSING
--> COMPLETED
-```
-
-用户可以在前端查看历史任务，并继续编辑历史任务。默认情况下，流程不会自动执行到下一步：每次点击“开始生成 / 进入下一步”只推进一个阶段，阶段产物生成后进入 `WAITING_REVIEW`，用户确认或编辑后再手动进入下一步；若创建任务时开启“自动确认”，满足条件的节点会自动推进。分镜脚本、图片评分、视频评分都支持编辑保存；保存后会清空受影响的后续产物，避免后续素材和用户编辑不一致。
-
-## API
-
-### 文档版任务接口
-
-创建任务：
+### 创建任务（商品图）
 
 ```bash
 curl -X POST http://localhost:8080/api/video-tasks \
@@ -217,53 +221,9 @@ curl -X POST http://localhost:8080/api/video-tasks \
   -d '{
     "workflowType": "product_image_ad",
     "inputType": "product_image",
-    "text": "参考商品图片，生成一条 15 秒带货广告视频。商品：玻璃水。卖点：去虫胶、无甲醇、去油膜。",
-    "imageUrls": [
-      "https://example.com/product.jpg"
-    ],
-    "videoType": "商品展示视频",
-    "platform": "抖音",
-    "duration": 15,
-    "aspectRatio": "9:16",
-    "style": "真实生活方式、明亮、轻快",
-    "imageScoringEnabled": true,
-    "videoScoringEnabled": false,
-    "autoConfirmEnabled": false,
-    "generateImageCount": 2,
-    "generateVideoCount": 1
-  }'
-```
-
-视频拆解广告流程可先上传视频，再创建任务：
-
-```bash
-curl -X POST http://localhost:8080/api/video-tasks/upload-video \
-  -F 'file=@/absolute/path/to/source.mp4'
-
-# 响应示例：
-# { "code": 0, "data": { "fileName": "source.mp4", "fileUrl": "http://127.0.0.1:9000/ad-video-gen-java/uploads/videos/..." } }
-```
-
-商品图流程上传图片：
-
-```bash
-curl -X POST http://localhost:8080/api/video-tasks/upload-image \
-  -F 'file=@/absolute/path/to/product.jpg'
-```
-
-创建视频拆解任务（使用上传返回的 `fileUrl`）：
-
-```bash
-curl -X POST http://localhost:8080/api/video-tasks \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "workflowType": "video_storyboard_ad",
-    "inputType": "source_video",
-    "text": "请基于上传的视频素材总结分镜，并重制为一条适合小红书的广告视频。",
-    "sourceVideoUrl": "http://127.0.0.1:9000/ad-video-gen-java/uploads/videos/2026/06/22/xxx-source.mp4",
-    "sourceVideoFileName": "source.mp4",
-    "videoType": "视频素材重制广告",
-    "platform": "小红书",
+    "text": "参考商品图片，生成一条 15 秒带货广告视频。",
+    "imageUrls": ["https://example.com/product.jpg"],
+    "platform": "douyin",
     "duration": 15,
     "aspectRatio": "9:16",
     "style": "电影感",
@@ -275,119 +235,87 @@ curl -X POST http://localhost:8080/api/video-tasks \
   }'
 ```
 
-`CreateVideoTaskRequest` 关键字段说明：
-
-- `workflowType`
-  - `product_image_ad`：商品图生成广告
-  - `video_storyboard_ad`：视频解析生成广告
-- `inputType`
-  - `product_image`：商品图流程
-  - `source_video`：视频拆解流程
-- `imageScoringEnabled`
-  - `true`：自动对候选图片评分
-  - `false`：不评分，等待人工选择
-- `videoScoringEnabled`
-  - `true`：自动对候选视频评分
-  - `false`：不评分，等待人工选择
-- `autoConfirmEnabled`
-  - `true`：节点满足条件时自动推进
-  - `false`：每一步都停在待审核态
-
-启动任务：
-
-```bash
-curl -X POST http://localhost:8080/api/video-tasks/{taskId}/start
-```
-
-进入下一步：
-
-```bash
-curl -X POST http://localhost:8080/api/video-tasks/{taskId}/advance
-```
-
-查询最近历史任务：
-
-```bash
-curl http://localhost:8080/api/video-tasks
-```
-
-查询详情：
-
-```bash
-curl http://localhost:8080/api/video-tasks/{taskId}
-```
-
-保存分镜脚本 / 图片评分 / 视频评分编辑：
-
-```bash
-curl -X POST http://localhost:8080/api/video-tasks/{taskId}/context \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "shots": [],
-    "scoredImageGroups": null,
-    "scoredVideoGroups": null
-  }'
-```
-
-人工选择候选图片/视频：
-
-```bash
-curl -X POST http://localhost:8080/api/video-tasks/{taskId}/select-assets \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "selectedImages": [
-      { "shotId": "shot_001", "assetId": "img_shot_001_1" }
-    ],
-    "selectedVideos": [
-      { "shotId": "shot_001", "assetId": "vid_shot_001_1" }
-    ]
-  }'
-```
-
-从指定阶段重新生成：
+### 重燃
 
 ```bash
 curl -X POST http://localhost:8080/api/video-tasks/{taskId}/regenerate \
   -H 'Content-Type: application/json' \
   -d '{
     "fromStage": "IMAGE_GENERATING",
-    "reason": "候选图片不够突出商品卖点"
+    "reason": "调整分镜提示词后重跑",
+    "shots": []
   }'
 ```
 
-可重新生成阶段：
+可选 `fromStage`：`MARKET_PLANNING`（仅商品图）、`SHOT_SCRIPT_GENERATING`、`IMAGE_GENERATING`、`VIDEO_GENERATING`、`FINAL_COMPOSING`。
 
-```text
-MARKET_PLANNING
-SHOT_SCRIPT_GENERATING
-IMAGE_GENERATING
-VIDEO_GENERATING
-FINAL_COMPOSING
+---
+
+## Docker 部署
+
+```bash
+mkdir -p docker/ffmpeg
+cp /path/to/ffmpeg-master-latest-linux64-gpl.tar.xz docker/ffmpeg/
+
+mvn clean package
+docker build -t ad-video-gen-java .
+
+docker run -d \
+  --name ad-video-gen-java \
+  -p 48080:48080 \
+  -e ARK_API_KEY=... \
+  -e LLM_ENDPOINT_ID=... \
+  -e CGT_ENDPOINT_ID=... \
+  -e T2V_ENDPOINT_ID=... \
+  -e PUBLIC_BASE_URL=http://your-host:48080 \
+  -e S3_ENDPOINT=http://host.docker.internal:9000 \
+  -e S3_ACCESS_KEY=... \
+  -e S3_SECRET_KEY=... \
+  -v "$(pwd)/docker-data/db:/app/data/db" \
+  -v "$(pwd)/docker-data/videos:/app/data/videos" \
+  ad-video-gen-java
 ```
 
-任务上下文会持久化到 H2：创建请求原文保存在 `video_task.request_json`，完整上下文保存在 `video_task_context.context_json`。
+| 地址 | 说明 |
+|------|------|
+| `http://localhost:48080/` | 工作台 |
+| `http://localhost:48080/h2-console` | H2 控制台 |
 
-旧版 `/api/ad-videos` 接口已移除，当前主流程统一使用 `/api/video-tasks`。
+---
 
-## 持久化
+## 数据持久化
 
-- H2 数据文件：`./data/ad-video-gen.mv.db`
-- H2 Console：`http://localhost:8080/h2-console`
-- JDBC URL：`jdbc:h2:file:./data/ad-video-gen;MODE=MySQL;AUTO_SERVER=TRUE`
-- 用户名：`sa`
-- 密码：空
-- 旧版任务服务重启时，仍处于 `RUNNING` 的任务会自动标记为 `FAILED`，然后可以调用 retry 从已保存的 checkpoint 继续。
-- 文档版任务的状态和上下文保存在 `video_task` / `video_task_context` 表中。
+| 项 | 值 |
+|----|-----|
+| 数据文件 | `./data/ad-video-gen.mv.db` |
+| JDBC | `jdbc:h2:file:./data/ad-video-gen;MODE=MySQL;AUTO_SERVER=TRUE` |
+| 用户名 / 密码 | `sa` / 空 |
+
+- `video_task`：任务元数据、`request_json`
+- `video_task_context`：完整上下文 `context_json`（分镜、候选组、选择结果、成片等）
+
+---
 
 ## 项目结构
 
 ```text
-src/main/java/com/volcengine/demo/advideo
-├── agent          # market/director/evaluate/release Agent
-├── client         # Doubao-Seed-1.6 / Seedream / Seedance HTTP 客户端
-├── config         # 配置属性和 HTTP 客户端配置
-├── controller     # REST API
-├── dto            # 请求/响应模型
-├── orchestrator   # 多 Agent 编排
-└── service        # 任务、多媒体、S3 对象存储、短链服务
+ad-video-gen-java/
+├── docs/screenshots/          # README 界面截图
+├── docs/ui-review/            # 交互与 UI 设计文档
+├── frontend/                  # React 工作台（main.tsx 单文件组件）
+├── src/main/java/.../advideo/
+│   ├── agent/                 # 各阶段 Agent
+│   ├── client/                # 方舟 API 客户端
+│   ├── orchestrator/          # 工作流编排、重燃、状态机
+│   ├── controller/            # REST API
+│   └── service/               # 存储、FFmpeg、Prompt
+└── src/main/resources/prompts/
 ```
+
+---
+
+## 相关文档
+
+- [交互设计](docs/ui-review/interaction-design.md)
+- [UI 设计规范](docs/ui-review/ui-design-spec.md)
+- [图片/视频阶段审查](docs/ui-review/image-video-stage-review.md)

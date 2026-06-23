@@ -343,9 +343,9 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             context.setVideoConfig(request.videoConfig());
             changed = true;
         }
-        if (fromStage.ordinal() >= TaskStage.IMAGE_GENERATING.ordinal()
+        if (fromStage.ordinal() >= TaskStage.SHOT_SCRIPT_GENERATING.ordinal()
                 && request.shots() != null) {
-            context.setShots(request.shots());
+            context.setShots(mergeEditableShotFields(context.getShots(), request.shots()));
             changed = true;
         }
         if (fromStage.ordinal() >= TaskStage.VIDEO_GENERATING.ordinal()
@@ -429,6 +429,8 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     @Transactional
     public void updateContext(String taskId, UpdateWorkflowContextRequest request) {
         WorkflowContext context = loadContext(taskId);
+        VideoTaskEntity task = taskRepository.findByTaskId(taskId).orElseThrow();
+        TaskStage currentStage = TaskStage.valueOf(task.getStage());
         if (request.shots() != null) {
             context.setShots(mergeEditableShotFields(context.getShots(), request.shots()));
             context.setImageGroups(List.of());
@@ -438,7 +440,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             context.setScoredVideoGroups(List.of());
             context.setSelectedVideos(List.of());
             context.setFinalVideo(null);
-            markWaitingReview(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
+            markWaitingReview(taskId, currentStage);
         }
         if (request.scoredImageGroups() != null) {
             context.setScoredImageGroups(request.scoredImageGroups());
@@ -448,6 +450,14 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             context.setSelectedVideos(List.of());
             context.setFinalVideo(null);
             markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
+        }
+        if (request.selectedImages() != null) {
+            context.setSelectedImages(request.selectedImages());
+            context.setVideoGroups(List.of());
+            context.setScoredVideoGroups(List.of());
+            context.setSelectedVideos(List.of());
+            context.setFinalVideo(null);
+            markWaitingReview(taskId, TaskStage.VIDEO_GENERATING);
         }
         if (request.scoredVideoGroups() != null) {
             context.setScoredVideoGroups(request.scoredVideoGroups());
@@ -1174,11 +1184,11 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         .map(edited -> new Shot(
                                 current.shotId(),
                                 current.orderNo(),
-                                current.duration(),
-                                edited.prompt(),
-                                edited.action(),
-                                edited.words(),
-                                edited.reference(),
+                                edited.duration() != null ? edited.duration() : current.duration(),
+                                edited.prompt() != null ? edited.prompt() : current.prompt(),
+                                edited.action() != null ? edited.action() : current.action(),
+                                edited.words() != null ? edited.words() : current.words(),
+                                StringUtils.hasText(edited.reference()) ? edited.reference() : current.reference(),
                                 current.camera(),
                                 current.sceneType()
                         ))
