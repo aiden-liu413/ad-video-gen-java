@@ -7,7 +7,7 @@ public record AdVideoProperties(
         ModelEndpoint llm,
         ModelEndpoint image,
         ModelEndpoint video,
-        FileUpload fileUpload,
+        Storage storage,
         ShortLink shortLink,
         Ffmpeg ffmpeg
 ) {
@@ -17,7 +17,17 @@ public record AdVideoProperties(
     public record ShortLink(String publicBaseUrl) {
     }
 
-    public record FileUpload(String purpose) {
+    public record Storage(
+            String endpoint,
+            String publicBaseUrl,
+            String accessKey,
+            String secretKey,
+            String bucket,
+            String region,
+            Boolean pathStyleAccess,
+            Boolean autoCreateBucket,
+            Integer objectExpirationDays
+    ) {
     }
 
     public record Ffmpeg(String binary, String outputDir) {

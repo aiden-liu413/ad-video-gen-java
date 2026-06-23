@@ -22,6 +22,7 @@
         <frontend-maven-plugin.version>1.15.1</frontend-maven-plugin.version>
         <node.version>v20.18.1</node.version>
         <npm.version>10.8.2</npm.version>
+        <aws.sdk.version>2.25.27</aws.sdk.version>
     </properties>
 
     <dependencies>
@@ -46,6 +47,11 @@
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
             <version>5.8.36</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${aws.sdk.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

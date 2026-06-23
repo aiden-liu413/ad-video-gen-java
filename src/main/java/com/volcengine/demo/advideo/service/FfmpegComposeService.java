@@ -22,9 +22,11 @@ public class FfmpegComposeService {
     private static final Duration TIMEOUT = Duration.ofMinutes(20);
 
     private final AdVideoProperties properties;
+    private final S3StorageService storageService;
 
-    public FfmpegComposeService(AdVideoProperties properties) {
+    public FfmpegComposeService(AdVideoProperties properties, S3StorageService storageService) {
         this.properties = properties;
+        this.storageService = storageService;
     }
 
     public String compose(String taskId, List<String> videoUrls) {
@@ -52,7 +54,10 @@ public class FfmpegComposeService {
                 }
             }
             log.info("FFmpeg compose completed, taskId={}, output={}", taskId, outputPath);
-            return properties.shortLink().publicBaseUrl() + "/final-videos/" + outputPath.getFileName();
+            if (!storageService.isConfigured()) {
+                return properties.shortLink().publicBaseUrl() + "/final-videos/" + outputPath.getFileName();
+            }
+            return storageService.uploadFinalVideo(outputPath, outputPath.getFileName().toString()).fileUrl();
         } catch (IOException ex) {
             throw new IllegalStateException("FFmpeg compose failed to prepare local files, taskId=" + taskId, ex);
         } finally {

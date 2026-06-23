@@ -19,7 +19,8 @@ Java/Spring Boot 版本的广告视频生成 Demo，按 `volcengine/ai-app-lab/d
 - 候选素材机制：每个分镜可生成多张候选图、多段候选视频，并支持人工选择
 - 评分开关：创建任务时可分别控制“图片评分”“视频评分”，关闭后默认不自动选材，等待人工确认
 - 自动确认开关：开启后，当前节点满足自动推进条件时会直接进入下一步；关闭后始终停在待审核态
-- 本地 FFmpeg 合成：最终视频落盘到 `./data/final-videos`，通过 `/final-videos/**` 访问，不使用 TOS 存储
+- 本地 FFmpeg 合成：最终视频先落盘到 `./data/final-videos`，随后上传到 S3 兼容对象存储
+- S3 兼容对象存储：本地图片/视频上传至 RustFS 等 S3 兼容服务，返回可访问 URL 供 LLM 与后续流程使用；`uploads/` 前缀对象默认 7 天过期，`final-videos/` 前缀默认不过期
 - 前端工作台：创建任务、切换两类工作流、查看历史任务、编辑阶段产物、人工选择素材、从指定阶段重新生成
 
 ## Prompt 对齐
@@ -63,11 +64,38 @@ export VIDEO_GENERATION_ENABLED=true
 export PUBLIC_BASE_URL=http://localhost:8080
 export FFMPEG_BINARY=ffmpeg
 export FFMPEG_OUTPUT_DIR=./data/final-videos
+
+# S3 兼容对象存储（RustFS / AWS S3 / 其他 S3 兼容服务）
+export S3_ENDPOINT=http://127.0.0.1:9000
+export S3_PUBLIC_BASE_URL=http://127.0.0.1:9000
+export S3_ACCESS_KEY=你的AccessKey
+export S3_SECRET_KEY=你的SecretKey
+export S3_BUCKET=ad-video-gen-java
+export S3_REGION=us-east-1
+export S3_PATH_STYLE_ACCESS=true
+export S3_AUTO_CREATE_BUCKET=true
+export S3_OBJECT_EXPIRATION_DAYS=7
 ```
+
+S3 兼容对象存储相关环境变量说明：
+
+| 变量 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `S3_ENDPOINT` | 否 | `http://127.0.0.1:9000` | S3 API 服务地址，RustFS 可填写 RustFS API endpoint |
+| `S3_PUBLIC_BASE_URL` | 否 | 空 | 对外可访问的文件 URL 前缀；为空时使用 `S3_ENDPOINT` |
+| `S3_ACCESS_KEY` | 是 | 空 | 访问密钥 |
+| `S3_SECRET_KEY` | 是 | 空 | 秘密密钥 |
+| `S3_BUCKET` | 否 | `ad-video-gen-java` | 存储桶名称 |
+| `S3_REGION` | 否 | `us-east-1` | S3 region；RustFS 本地部署通常保持默认即可 |
+| `S3_PATH_STYLE_ACCESS` | 否 | `true` | 是否使用 path-style URL，RustFS 等自托管服务建议开启 |
+| `S3_AUTO_CREATE_BUCKET` | 否 | `true` | 启动时自动创建 bucket 并配置生命周期 |
+| `S3_OBJECT_EXPIRATION_DAYS` | 否 | `7` | `uploads/` 前缀对象过期天数；最终视频使用 `final-videos/` 前缀，默认不过期 |
+
+未配置 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 时，上传接口会返回 mock URL，便于本地先跑通流程；正式使用图片/视频上传能力前需配置 RustFS 或其他 S3 兼容对象存储。
 
 未配置 `ARK_API_KEY` 或未开启 `IMAGE_GENERATION_ENABLED` / `VIDEO_GENERATION_ENABLED` 时，服务会使用本地兜底内容，方便先跑通整体流程。
 
-最终合成阶段会调用本机 FFmpeg。请确保 `ffmpeg` 在 `PATH` 中，或通过 `FFMPEG_BINARY` 指定可执行文件路径。
+最终合成阶段会调用本机 FFmpeg。请确保 `ffmpeg` 在 `PATH` 中，或通过 `FFMPEG_BINARY` 指定可执行文件路径。配置 S3 兼容对象存储后，最终视频会上传到 `final-videos/` 前缀，发布信息中的短链字段直接使用对象存储 URL。
 
 ## 前端工作台
 
@@ -93,8 +121,8 @@ http://localhost:8002/
 - 左侧展示当前项目的核心流程设计图和理念说明
 - 中间输入区顶部可切换两类工作流：`商品图生成` / `视频解析生成`
 - 右侧为生成配置，包括目标平台、时长、比例、风格、评分开关和自动确认开关
-- 商品图流程支持本地图片上传或图片链接输入
-- 视频拆解流程支持本地视频上传或视频 URL 输入
+- 商品图流程支持本地图片上传或图片链接输入；本地上传会先写入 S3 兼容对象存储并返回 URL
+- 视频拆解流程支持本地视频上传或视频 URL 输入；本地上传会先写入 S3 兼容对象存储并返回 URL
 
 ### 审核与重燃
 
@@ -129,17 +157,30 @@ docker run -d \
   -e T2V_ENDPOINT_ID=你的Seedance接入点ID \
   -e LLM_ENDPOINT_ID=你的LLM接入点ID \
   -e PUBLIC_BASE_URL=http://你的服务暴露的ip或域名:48080 \
+  -e S3_ENDPOINT=http://host.docker.internal:9000 \
+  -e S3_PUBLIC_BASE_URL=http://你的对象存储暴露地址:9000 \
+  -e S3_ACCESS_KEY=你的AccessKey \
+  -e S3_SECRET_KEY=你的SecretKey \
+  -e S3_BUCKET=ad-video-gen-java \
+  -e S3_REGION=us-east-1 \
+  -e S3_PATH_STYLE_ACCESS=true \
+  -e S3_AUTO_CREATE_BUCKET=true \
+  -e S3_OBJECT_EXPIRATION_DAYS=7 \
   -v "$(pwd)/docker-data/db:/app/data/db" \
   -v "$(pwd)/docker-data/videos:/app/data/videos" \
   ad-video-gen-java
 ```
+
+容器访问宿主机 RustFS 时，`S3_ENDPOINT` 常用 `http://host.docker.internal:9000`（Linux 需 Docker 20.10+ 并加 `--add-host=host.docker.internal:host-gateway`）。RustFS 与业务容器同网部署时，可改为 `http://rustfs:9000` 等服务名。
+
+确保 bucket 对 `S3_PUBLIC_BASE_URL` 或 `S3_ENDPOINT` 对应地址可读，否则 LLM 与前端无法访问上传后的图片/视频 URL。
 
 访问地址：
 
 ```text
 前端工作台：http://localhost:48080/
 H2 Console：http://localhost:48080/h2-console
-最终视频：http://localhost:48080/final-videos/{文件名}.mp4
+最终视频：使用接口返回的对象存储 URL，例如 http://对象存储地址:9000/ad-video-gen-java/final-videos/{日期}/{文件名}.mp4
 ```
 
 容器内 H2 JDBC URL 为：
@@ -198,9 +239,19 @@ curl -X POST http://localhost:8080/api/video-tasks \
 ```bash
 curl -X POST http://localhost:8080/api/video-tasks/upload-video \
   -F 'file=@/absolute/path/to/source.mp4'
+
+# 响应示例：
+# { "code": 0, "data": { "fileName": "source.mp4", "fileUrl": "http://127.0.0.1:9000/ad-video-gen-java/uploads/videos/..." } }
 ```
 
-创建视频拆解任务：
+商品图流程上传图片：
+
+```bash
+curl -X POST http://localhost:8080/api/video-tasks/upload-image \
+  -F 'file=@/absolute/path/to/product.jpg'
+```
+
+创建视频拆解任务（使用上传返回的 `fileUrl`）：
 
 ```bash
 curl -X POST http://localhost:8080/api/video-tasks \
@@ -209,7 +260,7 @@ curl -X POST http://localhost:8080/api/video-tasks \
     "workflowType": "video_storyboard_ad",
     "inputType": "source_video",
     "text": "请基于上传的视频素材总结分镜，并重制为一条适合小红书的广告视频。",
-    "sourceVideoFileId": "file_xxx",
+    "sourceVideoUrl": "http://127.0.0.1:9000/ad-video-gen-java/uploads/videos/2026/06/22/xxx-source.mp4",
     "sourceVideoFileName": "source.mp4",
     "videoType": "视频素材重制广告",
     "platform": "小红书",
@@ -338,5 +389,5 @@ src/main/java/com/volcengine/demo/advideo
 ├── controller     # REST API
 ├── dto            # 请求/响应模型
 ├── orchestrator   # 多 Agent 编排
-└── service        # 任务、多媒体、短链服务
+└── service        # 任务、多媒体、S3 对象存储、短链服务
 ```

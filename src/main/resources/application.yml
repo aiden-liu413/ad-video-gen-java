@@ -37,8 +37,16 @@ ad-video:
     # Doubao-Seedance 1.0 pro: 图文生视频
     model: ${VIDEO_MODEL:doubao-seedance-1-0-pro}
     endpoint-id: ${T2V_ENDPOINT_ID:}
-  file-upload:
-    purpose: ${ARK_FILE_PURPOSE:vision}
+  storage:
+    endpoint: ${S3_ENDPOINT:http://127.0.0.1:9000}
+    public-base-url: ${S3_PUBLIC_BASE_URL:}
+    access-key: ${S3_ACCESS_KEY:}
+    secret-key: ${S3_SECRET_KEY:}
+    bucket: ${S3_BUCKET:ad-video-gen-java}
+    region: ${S3_REGION:us-east-1}
+    path-style-access: ${S3_PATH_STYLE_ACCESS:true}
+    auto-create-bucket: ${S3_AUTO_CREATE_BUCKET:true}
+    object-expiration-days: ${S3_OBJECT_EXPIRATION_DAYS:7}
   short-link:
     public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   ffmpeg:

@@ -6,7 +6,6 @@ import com.volcengine.demo.advideo.dto.GenerateRequest;
 import com.volcengine.demo.advideo.dto.GenerationResult.MultimediaResult;
 import com.volcengine.demo.advideo.dto.GenerationResult.ReleasePlan;
 import com.volcengine.demo.advideo.service.PromptService;
-import com.volcengine.demo.advideo.service.ShortLinkService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -16,12 +15,10 @@ import java.util.List;
 public class ReleaseAgent {
 
     private final ArkChatClient chatClient;
-    private final ShortLinkService shortLinkService;
     private final PromptService promptService;
 
-    public ReleaseAgent(ArkChatClient chatClient, ShortLinkService shortLinkService, PromptService promptService) {
+    public ReleaseAgent(ArkChatClient chatClient, PromptService promptService) {
         this.chatClient = chatClient;
-        this.shortLinkService = shortLinkService;
         this.promptService = promptService;
     }
 
@@ -29,7 +26,6 @@ public class ReleaseAgent {
         String productName = config.productInfo().name() == null || config.productInfo().name().isBlank() ? "广告商品" : config.productInfo().name();
         String targetPlatform = StringUtils.hasText(config.platform()) ? config.platform() : "通用短视频平台";
         String releaseAdvice = releaseAdvice(targetPlatform);
-        String shortLink = shortLinkService.createShortLink(multimedia.videoUrl());
         String copy = chatClient.complete(
                 promptService.releaseAgent(),
                 """
@@ -45,7 +41,7 @@ public class ReleaseAgent {
                 headline(productName, targetPlatform),
                 copy,
                 hashtags(productName, targetPlatform),
-                shortLink
+                multimedia.videoUrl()
         );
     }
 

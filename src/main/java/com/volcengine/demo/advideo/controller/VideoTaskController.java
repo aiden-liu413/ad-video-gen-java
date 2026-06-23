@@ -1,6 +1,5 @@
 package com.volcengine.demo.advideo.controller;
 
-import com.volcengine.demo.advideo.client.ArkFileClient;
 import com.volcengine.demo.advideo.dto.ApiResponse;
 import com.volcengine.demo.advideo.dto.CreateVideoTaskRequest;
 import com.volcengine.demo.advideo.dto.CreateVideoTaskResponse;
@@ -11,6 +10,7 @@ import com.volcengine.demo.advideo.dto.TaskSummary;
 import com.volcengine.demo.advideo.dto.UploadVideoResponse;
 import com.volcengine.demo.advideo.dto.UpdateWorkflowContextRequest;
 import com.volcengine.demo.advideo.orchestrator.WorkflowOrchestratorService;
+import com.volcengine.demo.advideo.service.S3StorageService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +32,11 @@ public class VideoTaskController {
     private static final Logger log = LoggerFactory.getLogger(VideoTaskController.class);
 
     private final WorkflowOrchestratorService workflowOrchestratorService;
-    private final ArkFileClient arkFileClient;
+    private final S3StorageService storageService;
 
-    public VideoTaskController(WorkflowOrchestratorService workflowOrchestratorService, ArkFileClient arkFileClient) {
+    public VideoTaskController(WorkflowOrchestratorService workflowOrchestratorService, S3StorageService storageService) {
         this.workflowOrchestratorService = workflowOrchestratorService;
-        this.arkFileClient = arkFileClient;
+        this.storageService = storageService;
     }
 
     @PostMapping
@@ -47,14 +47,14 @@ public class VideoTaskController {
 
     @PostMapping("/upload-video")
     public ApiResponse<UploadVideoResponse> uploadVideo(@RequestParam("file") MultipartFile file) {
-        ArkFileClient.UploadResult uploadResult = arkFileClient.uploadVideo(file);
-        return ApiResponse.success(new UploadVideoResponse(uploadResult.fileId(), uploadResult.fileName()));
+        S3StorageService.UploadResult uploadResult = storageService.uploadVideo(file);
+        return ApiResponse.success(new UploadVideoResponse(uploadResult.fileName(), uploadResult.fileUrl()));
     }
 
     @PostMapping("/upload-image")
     public ApiResponse<UploadVideoResponse> uploadImage(@RequestParam("file") MultipartFile file) {
-        ArkFileClient.UploadResult uploadResult = arkFileClient.uploadImage(file);
-        return ApiResponse.success(new UploadVideoResponse(uploadResult.fileId(), uploadResult.fileName()));
+        S3StorageService.UploadResult uploadResult = storageService.uploadImage(file);
+        return ApiResponse.success(new UploadVideoResponse(uploadResult.fileName(), uploadResult.fileUrl()));
     }
 
     @PostMapping("/{taskId}/start")

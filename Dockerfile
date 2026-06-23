@@ -13,12 +13,12 @@ RUN mkdir -p /app/data/db /app/data/videos \
 
 COPY --chown=1001:0 target/ad-video-gen-java-*.jar /app/app.jar
 
+# S3_ACCESS_KEY / S3_SECRET_KEY 无默认值，需在 docker run 时传入
 ENV SERVER_PORT=48080 \
     SPRING_DATASOURCE_URL="jdbc:h2:file:/app/data/db/ad-video-gen;MODE=MySQL" \
     SPRING_H2_CONSOLE_SETTINGS_WEB_ALLOW_OTHERS=true \
     FFMPEG_BINARY=ffmpeg \
-    FFMPEG_OUTPUT_DIR=/app/data/videos \
-    PUBLIC_BASE_URL=http://localhost:48080
+    FFMPEG_OUTPUT_DIR=/app/data/videos
 
 VOLUME ["/app/data/db", "/app/data/videos"]
 EXPOSE 48080

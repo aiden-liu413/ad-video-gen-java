@@ -170,6 +170,8 @@ class VideoTaskWorkflowFunctionalTests {
                                   "duration": 15,
                                   "aspectRatio": "9:16",
                                   "style": "真实生活方式、明亮、轻快",
+                                  "imageScoringEnabled": true,
+                                  "videoScoringEnabled": true,
                                   "generateImageCount": 1,
                                   "generateVideoCount": 1
                                 }
