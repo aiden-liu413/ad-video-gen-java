@@ -253,9 +253,11 @@ curl -X POST http://localhost:8080/api/video-tasks/{taskId}/regenerate \
 
 ## Docker 部署
 
+镜像基于 Eclipse Temurin 17 JRE（UBI minimal）。FFmpeg 随仓库提供为 [`docker/ffmpeg/ffmpeg.zip`](docker/ffmpeg/ffmpeg.zip)（Linux x64）。**构建镜像前**需将其解压为 `docker/ffmpeg/ffmpeg`（该二进制已在 `.gitignore` 中，不入库）：
+
 ```bash
-mkdir -p docker/ffmpeg
-cp /path/to/ffmpeg-master-latest-linux64-gpl.tar.xz docker/ffmpeg/
+unzip -o -j docker/ffmpeg/ffmpeg.zip ffmpeg -d docker/ffmpeg/
+chmod +x docker/ffmpeg/ffmpeg
 
 mvn clean package
 docker build -t ad-video-gen-java .
@@ -269,6 +271,7 @@ docker run -d \
   -e T2V_ENDPOINT_ID=... \
   -e PUBLIC_BASE_URL=http://your-host:48080 \
   -e S3_ENDPOINT=http://your-s3-host:9000 \
+  -e S3_PUBLIC_BASE_URL=http://your-s3-public-host:9000 \
   -e S3_ACCESS_KEY=... \
   -e S3_SECRET_KEY=... \
   -e S3_BUCKET=ad-video-gen-java \
@@ -281,10 +284,12 @@ docker run -d \
   ad-video-gen-java
 ```
 
+
 | 地址 | 说明 |
 |------|------|
 | `http://localhost:48080/` | 工作台 |
 | `http://localhost:48080/h2-console` | H2 控制台 |
+| `jdbc:h2:file:/app/data/db/ad-video-gen;MODE=MySQL` | 容器内 JDBC |
 
 ---
 
