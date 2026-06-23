@@ -453,10 +453,10 @@ function App() {
     try {
       const imageSources = form.workflowType === "video_storyboard_ad" ? { imageUrls: [], imageFileIds: [] } : await prepareImageSources();
       const videoSource = await prepareVideoSource();
-      if (form.workflowType === "product_image_ad" && imageSources.imageUrls.length === 0 && imageSources.imageFileIds.length === 0) {
+      if (form.workflowType === "product_image_ad" && imageSources.imageUrls.length === 0) {
         throw new Error("请上传本地产品图片，或输入至少一个图片链接");
       }
-      if (form.workflowType === "video_storyboard_ad" && !videoSource.sourceVideoUrl && !videoSource.sourceVideoFileId) {
+      if (form.workflowType === "video_storyboard_ad" && !videoSource.sourceVideoUrl) {
         throw new Error("请上传本地视频文件，或输入视频链接");
       }
       const response = await fetch(`${API_BASE}/api/video-tasks`, {
@@ -467,9 +467,7 @@ function App() {
           inputType: form.workflowType === "video_storyboard_ad" ? "source_video" : "product_image",
           text: form.text,
           imageUrls: imageSources.imageUrls,
-          imageFileIds: imageSources.imageFileIds,
           sourceVideoUrl: videoSource.sourceVideoUrl,
-          sourceVideoFileId: videoSource.sourceVideoFileId,
           sourceVideoFileName: videoSource.sourceVideoFileName,
           videoType: form.videoType,
           platform: form.platform,
@@ -502,7 +500,7 @@ function App() {
     if (!imageFile) {
       return {
         imageUrls: manual,
-        imageFileIds: form.imageFileId ? [form.imageFileId] : []
+        imageFileIds: [] as string[]
       };
     }
     const formData = new FormData();
@@ -511,18 +509,17 @@ function App() {
       method: "POST",
       body: formData
     });
-    const body = (await response.json()) as ApiResponse<{ fileId: string; fileName: string }>;
+    const body = (await response.json()) as ApiResponse<{ fileName: string; fileUrl: string }>;
     if (!response.ok || body.code !== 0) {
       throw new Error(body.message || response.statusText);
     }
     setForm((previous) => ({
       ...previous,
-      imageFileId: body.data.fileId,
       imageFileName: body.data.fileName
     }));
     return {
-      imageUrls: manual,
-      imageFileIds: [body.data.fileId]
+      imageUrls: [...manual, body.data.fileUrl],
+      imageFileIds: [] as string[]
     };
   }
 
@@ -531,7 +528,6 @@ function App() {
     if (!videoFile) {
       return {
         sourceVideoUrl: manualUrl,
-        sourceVideoFileId: form.sourceVideoFileId,
         sourceVideoFileName: form.sourceVideoFileName
       };
     }
@@ -541,18 +537,17 @@ function App() {
       method: "POST",
       body: formData
     });
-    const body = (await response.json()) as ApiResponse<{ fileId: string; fileName: string }>;
+    const body = (await response.json()) as ApiResponse<{ fileName: string; fileUrl: string }>;
     if (!response.ok || body.code !== 0) {
       throw new Error(body.message || response.statusText);
     }
     setForm((previous) => ({
       ...previous,
-      sourceVideoFileId: body.data.fileId,
+      sourceVideoUrl: body.data.fileUrl,
       sourceVideoFileName: body.data.fileName
     }));
     return {
-      sourceVideoUrl: "",
-      sourceVideoFileId: body.data.fileId,
+      sourceVideoUrl: body.data.fileUrl,
       sourceVideoFileName: body.data.fileName
     };
   }
@@ -884,7 +879,7 @@ function CreateTaskView({
             <label className="upload-zone">
               <UploadCloud size={42} />
               <strong>{videoFile ? videoFile.name : (form.sourceVideoFileName || "拖拽源视频至此")}</strong>
-              <span>上传本地视频后将通过后端调用 Ark 文件上传接口，后续理解阶段使用素材 ID</span>
+              <span>上传本地视频后将保存到 S3 兼容对象存储（默认 7 天过期），后续理解阶段使用视频 URL</span>
               <input type="file" accept="video/*" onChange={(event) => setVideoFile(event.target.files?.[0] ?? null)} />
             </label>
             <label>
@@ -898,7 +893,7 @@ function CreateTaskView({
             <label className="upload-zone">
               <UploadCloud size={42} />
               <strong>{imageFile ? imageFile.name : (form.imageFileName || "拖拽产品图片至此")}</strong>
-              <span>支持 PNG, JPG, WEBP 或 AVIF，上传后自动转为 JPEG</span>
+              <span>支持 PNG, JPG, WEBP 或 AVIF，上传后保存到 S3 兼容对象存储（默认 7 天过期）</span>
               <input type="file" accept="image/*" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} />
             </label>
             <label>
@@ -1222,8 +1217,7 @@ function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOn
       <section className="panel-card marketing-plan-card">
         <h3>视频理解结果</h3>
         <label>素材标题<input readOnly value={task.videoConfig?.productInfo?.name ?? task.request?.sourceVideoFileName ?? "视频素材"} /></label>
-        <label>源视频文件 ID<input readOnly value={task.request?.sourceVideoFileId ?? "未上传本地文件"} /></label>
-        <label>源视频链接<textarea readOnly value={task.request?.sourceVideoUrl ?? ""} /></label>
+        <label>源视频链接<textarea readOnly value={task.request?.sourceVideoUrl ?? resolveLegacyVideoUrl(task.request)} /></label>
         <label>理解说明<textarea className="marketing-advice" readOnly value={task.videoConfig?.videoAdvice ?? ""} /></label>
       </section>
       <section className="panel-card">
@@ -1510,7 +1504,6 @@ function RegenerateControls({
             </div>
             {task.workflowType === "video_storyboard_ad" ? (
               <>
-                <label>源视频文件 ID<input value={regenerateDraft.taskInput.sourceVideoFileId ?? ""} onChange={(event) => updateTaskInput({ sourceVideoFileId: event.target.value })} /></label>
                 <label>源视频链接<textarea value={regenerateDraft.taskInput.sourceVideoUrl ?? ""} onChange={(event) => updateTaskInput({ sourceVideoUrl: event.target.value })} /></label>
                 <label>理解说明<textarea value={regenerateDraft.videoConfig.videoAdvice ?? ""} onChange={(event) => updateVideoConfig({ videoAdvice: event.target.value })} /></label>
               </>
@@ -1632,15 +1625,14 @@ function setFormValue(key: keyof FormState, value: string, setForm: React.Dispat
 }
 
 function regenerateDraftFromTask(task: TaskDetail): RegenerateDraft {
+  const imageUrls = mergeTaskImageUrls(task);
   return {
     taskInput: {
       workflowType: task.workflowType ?? "product_image_ad",
       inputType: task.request?.inputType ?? "product_image",
       text: task.request?.text ?? "",
-      imageUrls: task.request?.imageUrls ?? task.videoConfig?.productInfo?.resources ?? [],
-      sourceVideoUrl: task.request?.sourceVideoUrl ?? "",
-      imageFileIds: task.request?.imageFileIds ?? [],
-      sourceVideoFileId: task.request?.sourceVideoFileId ?? "",
+      imageUrls,
+      sourceVideoUrl: resolveTaskVideoUrl(task.request),
       sourceVideoFileName: task.request?.sourceVideoFileName ?? "",
       videoType: task.request?.videoType ?? "商品展示视频",
       platform: task.request?.platform ?? task.videoConfig?.platform ?? "douyin",
@@ -1941,6 +1933,29 @@ function summaryTitle(value: string) {
 
 function platformLabel(platform?: string) {
   return platformOptions.find((item) => item.value === platform)?.label ?? platform ?? "抖音";
+}
+
+function mergeTaskImageUrls(task: TaskDetail) {
+  const urls = [...(task.request?.imageUrls ?? task.videoConfig?.productInfo?.resources ?? [])];
+  for (const value of task.request?.imageFileIds ?? []) {
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      if (!urls.includes(value)) urls.push(value);
+    }
+  }
+  return urls;
+}
+
+function resolveTaskVideoUrl(request?: TaskRequest) {
+  if (!request) return "";
+  if (request.sourceVideoUrl) return request.sourceVideoUrl;
+  if (request.sourceVideoFileId?.startsWith("http://") || request.sourceVideoFileId?.startsWith("https://")) {
+    return request.sourceVideoFileId;
+  }
+  return "";
+}
+
+function resolveLegacyVideoUrl(request?: TaskRequest) {
+  return resolveTaskVideoUrl(request);
 }
 
 function shortId(value: string) {

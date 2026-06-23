@@ -33,6 +33,7 @@ import com.volcengine.demo.advideo.dto.SelectAssetsRequest;
 import com.volcengine.demo.advideo.dto.TaskDetailResponse;
 import com.volcengine.demo.advideo.dto.TaskSummary;
 import com.volcengine.demo.advideo.dto.UpdateWorkflowContextRequest;
+import com.volcengine.demo.advideo.util.MediaResourceUtils;
 import com.volcengine.demo.advideo.entity.VideoTaskContextEntity;
 import com.volcengine.demo.advideo.entity.VideoTaskEntity;
 import com.volcengine.demo.advideo.repository.VideoTaskContextRepository;
@@ -1265,6 +1266,10 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
 
     private GenerateRequest toGenerateRequest(CreateVideoTaskRequest request) {
         String prompt = valueOrDefault(request.text(), defaultPrompt());
+        MediaResourceUtils.SplitImageResources resources = MediaResourceUtils.splitImageResources(
+                request.imageUrls(),
+                request.imageFileIds()
+        );
         return new GenerateRequest(
                 prompt,
                 null,
@@ -1273,8 +1278,8 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 null,
                 request.style(),
                 String.valueOf(request.durationValue()),
-                safeImageUrls(request.imageUrls()),
-                safeImageFileIds(request.imageFileIds())
+                resources.imageUrls(),
+                resources.legacyFileIds()
         );
     }
 
@@ -1297,14 +1302,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     }
 
     private List<String> mergeReferenceResources(List<String> imageUrls, List<String> imageFileIds) {
-        List<String> urls = safeImageUrls(imageUrls);
-        List<String> fileIds = safeImageFileIds(imageFileIds).stream()
-                .map(fileId -> "fileid:" + fileId)
-                .toList();
-        java.util.ArrayList<String> merged = new java.util.ArrayList<>(urls.size() + fileIds.size());
-        merged.addAll(urls);
-        merged.addAll(fileIds);
-        return merged;
+        return MediaResourceUtils.mergeImageResources(imageUrls, imageFileIds);
     }
 
     private String defaultPrompt() {

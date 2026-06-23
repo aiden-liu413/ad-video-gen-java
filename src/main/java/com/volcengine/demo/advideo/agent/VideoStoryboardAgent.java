@@ -6,6 +6,7 @@ import com.volcengine.demo.advideo.client.ArkChatClient;
 import com.volcengine.demo.advideo.dto.CreateVideoTaskRequest;
 import com.volcengine.demo.advideo.domain.model.Shot;
 import com.volcengine.demo.advideo.service.PromptService;
+import com.volcengine.demo.advideo.util.MediaResourceUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -45,9 +46,16 @@ public class VideoStoryboardAgent {
                 request.durationValue()
         );
 
-        ArkChatClient.MediaInput mediaInput = StringUtils.hasText(request.sourceVideoFileId())
-                ? ArkChatClient.MediaInput.videoFile(request.sourceVideoFileId())
-                : ArkChatClient.MediaInput.videoUrl(request.sourceVideoUrl());
+        String resolvedVideoUrl = MediaResourceUtils.resolveVideoUrl(request.sourceVideoUrl(), request.sourceVideoFileId());
+        String legacyVideoFileId = MediaResourceUtils.resolveLegacyVideoFileId(request.sourceVideoUrl(), request.sourceVideoFileId());
+        ArkChatClient.MediaInput mediaInput;
+        if (StringUtils.hasText(resolvedVideoUrl)) {
+            mediaInput = ArkChatClient.MediaInput.videoUrl(resolvedVideoUrl);
+        } else if (StringUtils.hasText(legacyVideoFileId)) {
+            mediaInput = ArkChatClient.MediaInput.videoFile(legacyVideoFileId);
+        } else {
+            mediaInput = ArkChatClient.MediaInput.videoUrl(valueOrDefault(request.sourceVideoUrl(), ""));
+        }
 
         String response = chatClient.completeWithMedia(
                 promptService.videoStoryboardAgent(),
