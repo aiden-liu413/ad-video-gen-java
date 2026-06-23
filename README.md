@@ -268,9 +268,14 @@ docker run -d \
   -e CGT_ENDPOINT_ID=... \
   -e T2V_ENDPOINT_ID=... \
   -e PUBLIC_BASE_URL=http://your-host:48080 \
-  -e S3_ENDPOINT=http://host.docker.internal:9000 \
+  -e S3_ENDPOINT=http://your-s3-host:9000 \
   -e S3_ACCESS_KEY=... \
   -e S3_SECRET_KEY=... \
+  -e S3_BUCKET=ad-video-gen-java \
+  -e S3_REGION=us-east-1 \
+  -e S3_PATH_STYLE_ACCESS=true \
+  -e S3_AUTO_CREATE_BUCKET=true \
+  -e S3_OBJECT_EXPIRATION_DAYS=7 \
   -v "$(pwd)/docker-data/db:/app/data/db" \
   -v "$(pwd)/docker-data/videos:/app/data/videos" \
   ad-video-gen-java
@@ -315,7 +320,3 @@ ad-video-gen-java/
 ---
 
 ## 相关文档
-
-- [交互设计](docs/ui-review/interaction-design.md)
-- [UI 设计规范](docs/ui-review/ui-design-spec.md)
-- [图片/视频阶段审查](docs/ui-review/image-video-stage-review.md)
