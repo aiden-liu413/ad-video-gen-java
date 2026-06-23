@@ -19,7 +19,11 @@ public final class MediaResourceUtils {
     }
 
     /**
-     * Merges modern URL inputs with legacy Ark file IDs for image references.
+     * 合并图片 URL 和历史 Ark 文件 ID，生成统一的图片资源列表。
+     *
+     * @param imageUrls 直接可访问的图片 URL 列表，可以为空
+     * @param imageFileIds 历史 Ark 文件 ID 列表；如果元素是 HTTP URL，会按 URL 处理
+     * @return 去重后的图片资源列表，历史文件 ID 会带上 fileid: 前缀
      */
     public static List<String> mergeImageResources(List<String> imageUrls, List<String> imageFileIds) {
         List<String> merged = new ArrayList<>();
@@ -41,7 +45,11 @@ public final class MediaResourceUtils {
     }
 
     /**
-     * Splits image references so URL-based storage and legacy file IDs can be sent separately.
+     * 拆分图片资源，便于 URL 资源和历史 Ark 文件 ID 分别传递给模型接口。
+     *
+     * @param imageUrls 直接可访问的图片 URL 列表，可以为空
+     * @param imageFileIds 历史 Ark 文件 ID 列表；如果元素是 HTTP URL，会归入 URL 列表
+     * @return 拆分后的图片资源对象，包含 URL 列表和历史文件 ID 列表
      */
     public static SplitImageResources splitImageResources(List<String> imageUrls, List<String> imageFileIds) {
         List<String> urls = new ArrayList<>();
@@ -63,7 +71,11 @@ public final class MediaResourceUtils {
     }
 
     /**
-     * Resolves the video URL preferred by the S3/RustFS workflow.
+     * 解析视频 URL，优先使用 S3/RustFS 工作流中的直接访问地址。
+     *
+     * @param sourceVideoUrl 请求中显式传入的视频 URL
+     * @param sourceVideoFileId 历史视频文件 ID；如果是 HTTP URL，会作为视频 URL 使用
+     * @return 可直接访问的视频 URL；没有可用 URL 时返回 null
      */
     public static String resolveVideoUrl(String sourceVideoUrl, String sourceVideoFileId) {
         if (StringUtils.hasText(sourceVideoUrl)) {
@@ -76,7 +88,11 @@ public final class MediaResourceUtils {
     }
 
     /**
-     * Keeps old Ark file IDs available only when no direct video URL exists.
+     * 解析历史 Ark 视频文件 ID，仅在没有直接视频 URL 时保留旧文件 ID。
+     *
+     * @param sourceVideoUrl 请求中显式传入的视频 URL
+     * @param sourceVideoFileId 历史视频文件 ID
+     * @return 可用于 Ark 媒体输入的历史文件 ID；无可用文件 ID 时返回 null
      */
     public static String resolveLegacyVideoFileId(String sourceVideoUrl, String sourceVideoFileId) {
         if (StringUtils.hasText(sourceVideoUrl)) {

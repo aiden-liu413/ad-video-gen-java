@@ -74,7 +74,13 @@ public class S3StorageService {
     }
 
     /**
-     * Uploads composed final videos to a non-expiring prefix.
+     * 上传已合成的最终视频到默认不过期的对象存储前缀。
+     *
+     * @param file 本地最终视频文件路径，不能为空
+     * @param fileName 上传到对象存储时使用的文件名；为空时使用本地文件名
+     * @return 上传结果，包含原始文件名和可访问的视频 URL
+     * @throws IllegalArgumentException 当本地文件路径为空时抛出
+     * @throws IllegalStateException 当对象存储上传失败时抛出
      */
     public UploadResult uploadFinalVideo(Path file, String fileName) {
         if (file == null) {
@@ -104,7 +110,13 @@ public class S3StorageService {
     }
 
     /**
-     * Uploads transient source assets to the expiring uploads prefix.
+     * 上传临时素材文件到会按生命周期清理的对象存储前缀。
+     *
+     * @param file 待上传的表单文件，不能为空且内容不能为空
+     * @param category 素材分类，用于生成对象存储 key，例如 images 或 videos
+     * @return 上传结果，包含原始文件名和可访问的素材 URL
+     * @throws IllegalArgumentException 当上传文件为空或内容为空时抛出
+     * @throws IllegalStateException 当对象存储上传失败时抛出
      */
     public UploadResult upload(MultipartFile file, String category) {
         if (file == null || file.isEmpty()) {
@@ -247,7 +259,9 @@ public class S3StorageService {
     }
 
     /**
-     * Indicates whether object storage has enough settings to use the S3 API.
+     * 判断当前对象存储配置是否足以启用 S3 API。
+     *
+     * @return 配置了 endpoint、accessKey、secretKey 和 bucket 时返回 true，否则返回 false
      */
     public boolean isConfigured() {
         AdVideoProperties.Storage storage = storage();

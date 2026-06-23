@@ -60,21 +60,35 @@ class S3StorageServiceTest {
         assertThat(result.fileUrl()).contains("/ad-video-gen-java/uploads/images/");
     }
 
-    // Creates a storage service with S3 settings and an injected mock client.
+    /**
+     * 创建带有 S3 配置并注入 mock 客户端的存储服务。
+     *
+     * @param client 用于捕获上传请求的 mock S3 客户端
+     * @return 已注入 mock 客户端的存储服务
+     */
     private S3StorageService configuredService(S3Client client) {
         S3StorageService service = new S3StorageService(properties());
         ReflectionTestUtils.setField(service, "client", client);
         return service;
     }
 
-    // Captures the PutObject request from the mocked S3 client.
+    /**
+     * 捕获 mock S3 客户端收到的 PutObject 请求。
+     *
+     * @param client 已执行上传调用的 mock S3 客户端
+     * @return 捕获到的 PutObject 请求对象
+     */
     private PutObjectRequest putObjectRequest(S3Client client) {
         var captor = forClass(PutObjectRequest.class);
         verify(client, times(1)).putObject(captor.capture(), any(RequestBody.class));
         return captor.getValue();
     }
 
-    // Builds the minimal configured properties needed for S3 uploads.
+    /**
+     * 构造执行 S3 上传所需的最小配置对象。
+     *
+     * @return 包含对象存储、短链和 FFmpeg 配置的项目配置对象
+     */
     private AdVideoProperties properties() {
         return new AdVideoProperties(
                 null,
