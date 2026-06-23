@@ -56,7 +56,7 @@ class VideoTaskWorkflowFunctionalTests {
 
     @Test
     void videoTaskWorkflowCanCompleteAndRegenerateFinalCompose() throws Exception {
-        String taskId = createTask();
+        String taskId = createProductImageTask();
 
         assertThat(taskRepository.findByTaskId(taskId)).isPresent();
         assertThat(contextRepository.findByTaskId(taskId)).isPresent();
@@ -155,7 +155,33 @@ class VideoTaskWorkflowFunctionalTests {
                 .isEqualTo(finalVideoUrl);
     }
 
-    private String createTask() throws Exception {
+    @Test
+    void videoStoryboardWorkflowShouldStartFromVideoUnderstandingAndComplete() throws Exception {
+        String taskId = createVideoStoryboardTask();
+
+        JsonNode storyboard = advanceAndWait(taskId, "SHOT_SCRIPT_GENERATING");
+        assertThat(storyboard.path("data").path("workflowType").asText()).isEqualTo("video_storyboard_ad");
+        assertThat(storyboard.path("data").path("videoConfig").path("productInfo").path("extra").path("sourceVideoUrl").asText())
+                .isEqualTo("https://s3.example.com/source/demo.mp4");
+        assertThat(storyboard.path("data").path("shots")).hasSizeGreaterThanOrEqualTo(1);
+
+        JsonNode images = advanceAndWait(taskId, "IMAGE_GENERATING");
+        assertThat(images.path("data").path("imageGroups")).hasSizeGreaterThanOrEqualTo(1);
+        assertThat(images.path("data").path("scoredImageGroups")).hasSizeGreaterThanOrEqualTo(1);
+
+        JsonNode videos = advanceAndWait(taskId, "VIDEO_GENERATING");
+        assertThat(videos.path("data").path("videoGroups")).hasSizeGreaterThanOrEqualTo(1);
+        assertThat(videos.path("data").path("selectedVideos")).hasSizeGreaterThanOrEqualTo(1);
+
+        JsonNode completed = advanceAndWait(taskId, "COMPLETED");
+        assertThat(completed.path("data").path("status").asText()).isEqualTo("SUCCESS");
+        assertThat(completed.path("data").path("stage").asText()).isEqualTo("COMPLETED");
+        assertThat(completed.path("data").path("finalVideo").path("videoUrl").asText())
+                .startsWith("http://localhost:8080/final-videos/");
+    }
+
+    // Creates the product-image workflow used by the full manual-review path test.
+    private String createProductImageTask() throws Exception {
         String response = mockMvc.perform(post("/api/video-tasks")
                         .contentType("application/json")
                         .content("""
@@ -185,12 +211,45 @@ class VideoTaskWorkflowFunctionalTests {
         return body.path("data").path("taskId").asText();
     }
 
+    // Creates the video-storyboard workflow to verify the alternate entry path.
+    private String createVideoStoryboardTask() throws Exception {
+        String response = mockMvc.perform(post("/api/video-tasks")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "workflowType": "video_storyboard_ad",
+                                  "inputType": "source_video",
+                                  "text": "请基于源视频重制一条 15 秒广告视频。",
+                                  "sourceVideoUrl": "https://s3.example.com/source/demo.mp4",
+                                  "sourceVideoFileName": "demo.mp4",
+                                  "videoType": "视频素材重制广告",
+                                  "platform": "小红书",
+                                  "duration": 15,
+                                  "aspectRatio": "9:16",
+                                  "style": "电影感",
+                                  "imageScoringEnabled": true,
+                                  "videoScoringEnabled": true,
+                                  "generateImageCount": 1,
+                                  "generateVideoCount": 1
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        JsonNode body = objectMapper.readTree(response);
+        assertThat(body.path("code").asInt()).isZero();
+        return body.path("data").path("taskId").asText();
+    }
+
+    // Advances one workflow step and waits until the asynchronous worker reaches the expected stage.
     private JsonNode advanceAndWait(String taskId, String expectedStage) throws Exception {
         mockMvc.perform(post("/api/video-tasks/{taskId}/advance", taskId))
                 .andExpect(status().isOk());
         return waitForStage(taskId, expectedStage);
     }
 
+    // Polls task detail because workflow execution runs on a CompletableFuture.
     private JsonNode waitForStage(String taskId, String expectedStage) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         JsonNode body = null;
@@ -215,6 +274,7 @@ class VideoTaskWorkflowFunctionalTests {
         throw new AssertionError("Timed out waiting for task. Last response: " + body);
     }
 
+    // Creates an isolated directory for final-video files generated by the FFmpeg stub.
     private static Path createTestDir() {
         try {
             return Files.createTempDirectory("ad-video-functional-");
@@ -223,6 +283,7 @@ class VideoTaskWorkflowFunctionalTests {
         }
     }
 
+    // Writes a tiny FFmpeg substitute that creates the requested output file.
     private static Path createFfmpegStub(Path testDir) {
         try {
             Path script = testDir.resolve("ffmpeg-stub.sh");

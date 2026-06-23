@@ -73,6 +73,9 @@ public class S3StorageService {
         return upload(file, "images");
     }
 
+    /**
+     * Uploads composed final videos to a non-expiring prefix.
+     */
     public UploadResult uploadFinalVideo(Path file, String fileName) {
         if (file == null) {
             throw new IllegalArgumentException("最终视频文件不能为空");
@@ -100,6 +103,9 @@ public class S3StorageService {
         }
     }
 
+    /**
+     * Uploads transient source assets to the expiring uploads prefix.
+     */
     public UploadResult upload(MultipartFile file, String category) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空");
@@ -240,6 +246,9 @@ public class S3StorageService {
         return StringUtils.hasText(normalized) ? normalized : "file.bin";
     }
 
+    /**
+     * Indicates whether object storage has enough settings to use the S3 API.
+     */
     public boolean isConfigured() {
         AdVideoProperties.Storage storage = storage();
         return storage != null
