@@ -1734,51 +1734,75 @@ function shotFromImageGroup(group: ShotImageGroup, orderNo: number): Shot {
   };
 }
 
-function SelectionProgressBar({
+/**
+ * 功能描述：渲染图片和视频审核页左侧的分镜导航，并支持点击定位到对应分镜卡片。
+ * 参数解释：groups 表示当前审核页的分镜候选集合；selected 表示已选择素材的分镜映射；assetKey 表示候选素材类型。
+ * 返回对象描述：返回可点击的分镜导航区域；当没有分镜候选时返回 null。
+ * 可能抛出的异常：无。
+ */
+function ShotReviewNavigator({
   groups,
   selected,
-  assetKey,
-  allExpanded,
-  onToggleExpandAll,
-  showExpandAll = false
+  assetKey
 }: {
   groups: Array<ShotImageGroup | ShotVideoGroup>;
   selected: Record<string, string>;
   assetKey: "images" | "videos";
-  allExpanded?: boolean;
-  onToggleExpandAll?: () => void;
-  showExpandAll?: boolean;
 }) {
-  const missingGroups = groups.filter((group) => {
-    const assets = assetKey === "images" && "images" in group ? group.images : "videos" in group ? group.videos : [];
-    return assets.length > 0 && !selected[group.shotId];
-  });
-  const selectedCount = groups.length - missingGroups.length;
-  const nextMissing = missingGroups[0]?.shotId;
-
-  function jumpTo(shotId: string) {
+  function jumpToShot(shotId: string) {
     document.getElementById(`shot-review-${shotId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   if (groups.length === 0) return null;
 
   return (
-    <div className="selection-progress-bar">
-      <span>
-        已选 <b>{selectedCount}/{groups.length}</b> 组
-        {missingGroups.length > 0 && <> · 还有 <b>{missingGroups.length}</b> 组待选择</>}
-      </span>
-      <div className="selection-progress-actions">
-        {showExpandAll && onToggleExpandAll && (
-          <button type="button" className="link-button" onClick={onToggleExpandAll}>
-            {allExpanded ? "收起全部" : "展开全部"}
-          </button>
-        )}
-        {nextMissing && (
-          <button type="button" className="link-button" onClick={() => jumpTo(nextMissing)}>
-            下一组未选：{nextMissing} ↓
-          </button>
-        )}
+    <aside className="shot-review-nav panel-card" aria-label="分镜导航">
+      <h3>分镜导航</h3>
+      <div className="shot-review-nav-list">
+        {groups.map((group) => {
+          const assets = assetKey === "images" && "images" in group ? group.images : "videos" in group ? group.videos : [];
+          const isSelected = Boolean(selected[group.shotId]);
+          const isActionable = assets.length > 0;
+          return (
+            <button
+              key={group.shotId}
+              type="button"
+              className={`shot-review-nav-item ${isSelected ? "selected" : "pending"}`}
+              disabled={!isActionable}
+              onClick={() => jumpToShot(group.shotId)}
+            >
+              <span>{group.shotId}</span>
+              <em>{isSelected ? "已选" : "待选择"}</em>
+            </button>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
+/**
+ * 功能描述：组织审核页的左右布局，左侧为分镜导航，右侧为分镜候选卡片列表。
+ * 参数解释：groups 表示分镜候选集合；selected 表示已选择素材映射；assetKey 表示图片或视频候选；children 表示右侧审核内容。
+ * 返回对象描述：返回图片和视频审核页共享的左右两栏布局。
+ * 可能抛出的异常：无。
+ */
+function ShotReviewLayout({
+  groups,
+  selected,
+  assetKey,
+  children
+}: {
+  groups: Array<ShotImageGroup | ShotVideoGroup>;
+  selected: Record<string, string>;
+  assetKey: "images" | "videos";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="shot-review-layout">
+      <ShotReviewNavigator groups={groups} selected={selected} assetKey={assetKey} />
+      <div className="shot-review-main">
+        {children}
       </div>
     </div>
   );
@@ -2176,46 +2200,46 @@ function useShotReviewExpansion(shotIds: string[]) {
   return { allExpanded, isDetailsExpanded, toggleDetails, toggleExpandAll };
 }
 
+/**
+ * 功能描述：渲染图片生成阶段的分镜素材选择页，左侧提供分镜导航，右侧展示每组图片候选与参数编辑入口。
+ * 参数解释：task 表示任务详情；editableShots 表示可编辑分镜；selectedImages 表示当前图片选择；readOnly 表示是否只读；onSaveStage 表示保存回调。
+ * 返回对象描述：返回图片生成阶段的审核与保存界面。
+ * 可能抛出的异常：无。
+ */
 function ImageGenerateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   const groups = task.imageGroups ?? [];
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
-      <SelectionProgressBar
-        groups={groups}
-        selected={selectedImages}
-        assetKey="images"
-        allExpanded={expansion.allExpanded}
-        onToggleExpandAll={expansion.toggleExpandAll}
-        showExpandAll
-      />
-      <div className="shot-review-list">
-        {groups.map((group) => (
-          <ShotReviewCard
-            key={group.shotId}
-            cardId={`shot-review-${group.shotId}`}
-            mode="image-generate"
-            imageGroup={group}
-            shot={editableShots.find((item) => item.shotId === group.shotId)}
-            workflowType={task.workflowType ?? "product_image_ad"}
-            selectedImages={selectedImages}
-            onSelectImages={setSelectedImages}
-            onShotChange={(shotId, patch) => {
-              if (readOnly) return;
-              const index = groups.findIndex((item) => item.shotId === shotId);
-              if (index < 0) return;
-              setEditableShots(upsertEditableShot(editableShots, shotId, patch, shotFromImageGroup(groups[index], index + 1)));
-            }}
-            readOnly={readOnly}
-            showScore={Boolean(task.request?.imageScoringEnabled)}
-            allowPendingScore={false}
-            taskStatus={task.status}
-            allExpanded={expansion.allExpanded}
-            detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
-            onToggleDetails={() => expansion.toggleDetails(group.shotId)}
-          />
-        ))}
-      </div>
+      <ShotReviewLayout groups={groups} selected={selectedImages} assetKey="images">
+        <div className="shot-review-list">
+          {groups.map((group) => (
+            <ShotReviewCard
+              key={group.shotId}
+              cardId={`shot-review-${group.shotId}`}
+              mode="image-generate"
+              imageGroup={group}
+              shot={editableShots.find((item) => item.shotId === group.shotId)}
+              workflowType={task.workflowType ?? "product_image_ad"}
+              selectedImages={selectedImages}
+              onSelectImages={setSelectedImages}
+              onShotChange={(shotId, patch) => {
+                if (readOnly) return;
+                const index = groups.findIndex((item) => item.shotId === shotId);
+                if (index < 0) return;
+                setEditableShots(upsertEditableShot(editableShots, shotId, patch, shotFromImageGroup(groups[index], index + 1)));
+              }}
+              readOnly={readOnly}
+              showScore={Boolean(task.request?.imageScoringEnabled)}
+              allowPendingScore={false}
+              taskStatus={task.status}
+              allExpanded={expansion.allExpanded}
+              detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
+              onToggleDetails={() => expansion.toggleDetails(group.shotId)}
+            />
+          ))}
+        </div>
+      </ShotReviewLayout>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存图片选择"} onSave={() => void onSaveStage()} dirty={isDirty} />
       )}
@@ -2223,46 +2247,46 @@ function ImageGenerateStage({ task, editableShots, setEditableShots, selectedIma
   );
 }
 
+/**
+ * 功能描述：渲染图片评估阶段的分镜素材审核页，使用左侧分镜导航定位到对应候选组。
+ * 参数解释：task 表示任务详情；editableShots 表示可编辑分镜；selectedImages 表示当前图片选择；readOnly 表示是否只读；onSaveStage 表示保存回调。
+ * 返回对象描述：返回图片评估阶段的审核与保存界面。
+ * 可能抛出的异常：无。
+ */
 function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   const groups = task.scoredImageGroups ?? [];
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
-      <SelectionProgressBar
-        groups={groups}
-        selected={selectedImages}
-        assetKey="images"
-        allExpanded={expansion.allExpanded}
-        onToggleExpandAll={expansion.toggleExpandAll}
-        showExpandAll
-      />
-      <div className="shot-review-list">
-        {groups.map((group) => (
-          <ShotReviewCard
-            key={group.shotId}
-            cardId={`shot-review-${group.shotId}`}
-            mode="image-evaluate"
-            imageGroup={group}
-            shot={editableShots.find((item) => item.shotId === group.shotId)}
-            workflowType={task.workflowType ?? "product_image_ad"}
-            selectedImages={selectedImages}
-            onSelectImages={setSelectedImages}
-            onShotChange={(shotId, patch) => {
-              if (readOnly) return;
-              const index = groups.findIndex((item) => item.shotId === shotId);
-              if (index < 0) return;
-              setEditableShots(upsertEditableShot(editableShots, shotId, patch, shotFromImageGroup(groups[index], index + 1)));
-            }}
-            readOnly={readOnly}
-            showScore={Boolean(task.request?.imageScoringEnabled)}
-            allowPendingScore
-            taskStatus={task.status}
-            allExpanded={expansion.allExpanded}
-            detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
-            onToggleDetails={() => expansion.toggleDetails(group.shotId)}
-          />
-        ))}
-      </div>
+      <ShotReviewLayout groups={groups} selected={selectedImages} assetKey="images">
+        <div className="shot-review-list">
+          {groups.map((group) => (
+            <ShotReviewCard
+              key={group.shotId}
+              cardId={`shot-review-${group.shotId}`}
+              mode="image-evaluate"
+              imageGroup={group}
+              shot={editableShots.find((item) => item.shotId === group.shotId)}
+              workflowType={task.workflowType ?? "product_image_ad"}
+              selectedImages={selectedImages}
+              onSelectImages={setSelectedImages}
+              onShotChange={(shotId, patch) => {
+                if (readOnly) return;
+                const index = groups.findIndex((item) => item.shotId === shotId);
+                if (index < 0) return;
+                setEditableShots(upsertEditableShot(editableShots, shotId, patch, shotFromImageGroup(groups[index], index + 1)));
+              }}
+              readOnly={readOnly}
+              showScore={Boolean(task.request?.imageScoringEnabled)}
+              allowPendingScore
+              taskStatus={task.status}
+              allExpanded={expansion.allExpanded}
+              detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
+              onToggleDetails={() => expansion.toggleDetails(group.shotId)}
+            />
+          ))}
+        </div>
+      </ShotReviewLayout>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存图片选择"} onSave={() => void onSaveStage()} dirty={isDirty} />
       )}
@@ -2365,40 +2389,40 @@ function VideoGenerateStage({
   );
 }
 
+/**
+ * 功能描述：渲染视频评估阶段的分镜视频审核页，左侧提供分镜导航，右侧展示视频候选和分镜上下文。
+ * 参数解释：task 表示任务详情；selectedImages 表示已选图片上下文；selectedVideos 表示当前视频选择；readOnly 表示是否只读；onSaveStage 表示保存回调。
+ * 返回对象描述：返回视频评估阶段的审核与保存界面。
+ * 可能抛出的异常：无。
+ */
 function VideoEvaluateStage({ task, selectedImages, selectedVideos, setSelectedVideos, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   const groups = task.scoredVideoGroups ?? [];
   const imageGroups = (task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? [];
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
-      <SelectionProgressBar
-        groups={groups}
-        selected={selectedVideos}
-        assetKey="videos"
-        allExpanded={expansion.allExpanded}
-        onToggleExpandAll={expansion.toggleExpandAll}
-        showExpandAll
-      />
-      <div className="shot-review-list">
-        {groups.map((group) => (
-          <ShotReviewCard
-            key={group.shotId}
-            cardId={`shot-review-${group.shotId}`}
-            mode="video-evaluate"
-            videoGroup={group}
-            contextImageUrl={resolveContextImageUrl(group.shotId, selectedImages, imageGroups)}
-            selectedVideos={selectedVideos}
-            onSelectVideos={setSelectedVideos}
-            readOnly={readOnly}
-            showScore={Boolean(task.request?.videoScoringEnabled)}
-            allowPendingScore
-            taskStatus={task.status}
-            allExpanded={expansion.allExpanded}
-            detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
-            onToggleDetails={() => expansion.toggleDetails(group.shotId)}
-          />
-        ))}
-      </div>
+      <ShotReviewLayout groups={groups} selected={selectedVideos} assetKey="videos">
+        <div className="shot-review-list">
+          {groups.map((group) => (
+            <ShotReviewCard
+              key={group.shotId}
+              cardId={`shot-review-${group.shotId}`}
+              mode="video-evaluate"
+              videoGroup={group}
+              contextImageUrl={resolveContextImageUrl(group.shotId, selectedImages, imageGroups)}
+              selectedVideos={selectedVideos}
+              onSelectVideos={setSelectedVideos}
+              readOnly={readOnly}
+              showScore={Boolean(task.request?.videoScoringEnabled)}
+              allowPendingScore
+              taskStatus={task.status}
+              allExpanded={expansion.allExpanded}
+              detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
+              onToggleDetails={() => expansion.toggleDetails(group.shotId)}
+            />
+          ))}
+        </div>
+      </ShotReviewLayout>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存视频选择"} onSave={() => void onSaveStage()} dirty={isDirty} />
       )}

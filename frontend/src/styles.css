@@ -1167,31 +1167,6 @@ pre {
   gap: 20px;
 }
 
-.selection-progress-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid #d3e1e9;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.82);
-  font-size: 13px;
-  color: #647a8f;
-}
-
-.selection-progress-bar b {
-  color: #173149;
-}
-
-.selection-progress-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
 .regen-hint {
   margin: 0;
   padding: 10px 12px;
@@ -1206,6 +1181,100 @@ pre {
 .shot-review-list {
   display: grid;
   gap: 16px;
+}
+
+.shot-review-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.shot-review-main {
+  min-width: 0;
+}
+
+.shot-review-nav {
+  position: sticky;
+  top: 84px;
+  display: grid;
+  gap: 14px;
+  align-self: start;
+}
+
+.shot-review-nav h3 {
+  margin: 0;
+  color: #173149;
+  font-size: 15px;
+}
+
+.shot-review-nav-list {
+  display: grid;
+  gap: 10px;
+}
+
+.shot-review-nav-item {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d6e4ec;
+  border-radius: 8px;
+  background: #fff;
+  color: #52677c;
+  box-shadow: none;
+  text-align: left;
+}
+
+.shot-review-nav-item:hover:not(:disabled),
+.shot-review-nav-item:focus-visible:not(:disabled) {
+  border-color: #18b8cc;
+  background: #f1fcfe;
+  color: #0a6578;
+}
+
+.shot-review-nav-item.selected {
+  border-color: #cfe6d8;
+  background: #f2fcf6;
+}
+
+.shot-review-nav-item.pending {
+  border-color: #d6e4ec;
+}
+
+.shot-review-nav-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.shot-review-nav-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #173149;
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.shot-review-nav-item em {
+  flex-shrink: 0;
+  color: #6f8395;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.shot-review-nav-item.selected em {
+  color: #167647;
+}
+
+.shot-review-nav-item.pending:hover:not(:disabled) em,
+.shot-review-nav-item.pending:focus-visible:not(:disabled) em {
+  color: #0a6578;
 }
 
 .shot-review-card {
@@ -2428,8 +2497,13 @@ blockquote {
   .metric-row,
   .split-actions,
   .regen-toolbar,
-  .score-row {
+  .score-row,
+  .shot-review-layout {
     grid-template-columns: 1fr;
+  }
+
+  .shot-review-nav {
+    position: static;
   }
 
   .filter-row,
