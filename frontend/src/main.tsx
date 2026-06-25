@@ -2577,7 +2577,7 @@ function VideoEvaluateStage({ task, selectedImages, selectedVideos, setSelectedV
 function FinalStage({ task }: { task: TaskDetail }) {
   return (
     <div className="final-layout">
-      <section>
+      <section className="final-preview-panel">
         <div className="final-title">
           <span><CheckCircle2 size={16} />生成完成</span>
           <h2>{finalTitle(task)}</h2>
@@ -2589,17 +2589,18 @@ function FinalStage({ task }: { task: TaskDetail }) {
           <div className="final-video placeholder"><PlayIcon /></div>
         )}
       </section>
-      <aside className="result-stack">
-        <section className="panel-card">
-          <h3>发布文案 <Copy size={18} /></h3>
+      <aside className="final-publish-panel">
+        <section className="final-copy-block">
+          <h3>发布文案</h3>
           <blockquote>{task.finalVideo?.videoRelease ?? "等待生成发布文案"}</blockquote>
           <div className="style-tags">{(task.finalVideo?.hashtags ?? []).map((tag) => <span key={tag}>{tag}</span>)}</div>
         </section>
-        <section className="panel-card">
+        <section className="final-share-block">
           <h3>分享链接</h3>
+          <label>视频地址</label>
           <div className="copy-line">
             <input readOnly value={task.finalVideo?.videoUrl ?? ""} />
-            <button disabled={!task.finalVideo?.videoUrl} onClick={() => navigator.clipboard.writeText(task.finalVideo?.videoUrl ?? "")}><Copy size={20} /></button>
+            <button disabled={!task.finalVideo?.videoUrl} onClick={() => navigator.clipboard.writeText(task.finalVideo?.videoUrl ?? "")}><Copy size={16} />复制</button>
           </div>
           <a className={`download-button ${task.finalVideo?.videoUrl ? "" : "disabled"}`} href={task.finalVideo?.videoUrl || undefined} download target="_blank" rel="noreferrer">
             <Download size={18} />下载高清视频
