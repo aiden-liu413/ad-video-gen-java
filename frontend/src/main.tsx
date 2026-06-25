@@ -1754,7 +1754,8 @@ function ShotReviewNavigator({
     const scrollHost = target?.closest(".shot-review-main");
     if (!target || !(scrollHost instanceof HTMLElement)) return;
     const targetTop = target.getBoundingClientRect().top - scrollHost.getBoundingClientRect().top + scrollHost.scrollTop;
-    scrollHost.scrollTo({ top: Math.max(targetTop - 8, 0), behavior: "smooth" });
+    const centeredTop = targetTop - Math.max((scrollHost.clientHeight - target.clientHeight) / 2, 12);
+    scrollHost.scrollTo({ top: Math.max(centeredTop, 0), behavior: "smooth" });
   }
 
   if (groups.length === 0) return null;

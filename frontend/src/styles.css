@@ -1212,8 +1212,10 @@ pre {
   min-width: 0;
   overflow-y: auto;
   padding-right: 4px;
+  padding-bottom: 14px;
   scroll-behavior: smooth;
   scroll-padding-top: 8px;
+  scroll-padding-bottom: 20px;
 }
 
 .shot-review-nav {
@@ -1369,13 +1371,13 @@ pre {
 
 .shot-review-image-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 260px));
   gap: 12px;
 }
 
 .shot-review-video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 300px));
   gap: 12px;
 }
 
@@ -1386,8 +1388,8 @@ pre {
 .shot-review-video-grid .media-preview video,
 .shot-review-video-grid .media-preview .mock-media {
   width: 100%;
-  max-height: 300px;
-  aspect-ratio: 9 / 16;
+  aspect-ratio: 4 / 3;
+  max-height: 220px;
   object-fit: contain;
   border-radius: 8px;
   background: #0f1c28;
@@ -1395,6 +1397,12 @@ pre {
 
 .shot-review-image-grid .media-card.compact {
   min-height: 0;
+}
+
+.shot-review-image-grid .media-preview img,
+.shot-review-image-grid .media-preview .mock-media {
+  aspect-ratio: 4 / 3;
+  max-height: 220px;
 }
 
 .shot-review-image-grid .score-badge {
