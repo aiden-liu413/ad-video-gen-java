@@ -690,11 +690,17 @@ function App() {
     });
   }
 
+  /**
+   * 功能描述：合并当前重燃表单草稿与可编辑分镜数据，并对分镜顺序做前端兜底排序。
+   * 参数解释：无。
+   * 返回对象描述：返回用于生成重燃请求的草稿对象，包含按分镜 ID 自然顺序排列的分镜与图片组。
+   * 可能抛出的异常：无。
+   */
   function activeRegenerateDraft(): RegenerateDraft {
     return {
       ...regenerateDraft,
-      shots: editableShots,
-      imageGroups: editableImageGroups.length > 0 ? editableImageGroups : regenerateDraft.imageGroups
+      shots: sortByShotId(editableShots),
+      imageGroups: sortByShotId(editableImageGroups.length > 0 ? editableImageGroups : regenerateDraft.imageGroups)
     };
   }
 
@@ -2779,6 +2785,10 @@ function RegenerateControls({
   const updateImageGroup = (shotId: string, patch: Partial<ShotImageGroup>) => {
     setEditableImageGroups(editableImageGroups.map((group) => group.shotId === shotId ? { ...group, ...patch } : group));
   };
+  const orderedEditableShots = sortByShotId(editableShots);
+  const orderedEditableImageGroups = sortByShotId(editableImageGroups);
+  const orderedDraftImageGroups = draftImageGroups(regenerateDraft);
+  const orderedDraftVideoGroups = draftVideoGroups(regenerateDraft);
 
   function handleStageChange(nextStage: TaskStage) {
     if (nextStage === regenerateStage) return;
@@ -2885,7 +2895,7 @@ function RegenerateControls({
             </div>
             <p className="regen-hint">仅修改分镜参数与生成配置，已生成的图片候选不会在此展示。</p>
             <ShotEditorList
-              shots={editableShots}
+              shots={orderedEditableShots}
               readOnly={false}
               workflowType={task.workflowType ?? "product_image_ad"}
               onChange={setEditableShots}
@@ -2901,7 +2911,7 @@ function RegenerateControls({
             <p className="regen-hint">可在每个分镜内重新选择用于生成分镜视频的候选图；已生成的视频候选不会在此展示。</p>
             {task.workflowType === "video_storyboard_ad" ? (
               <VideoGenerationShotEditor
-                groups={editableImageGroups}
+                groups={orderedEditableImageGroups}
                 readOnly={false}
                 onChangeGroup={updateImageGroup}
                 selectedImages={regenerateDraft.selectedImages}
@@ -2910,13 +2920,13 @@ function RegenerateControls({
               />
             ) : (
               <ShotEditorList
-                shots={editableShots}
+                shots={orderedEditableShots}
                 readOnly={false}
                 workflowType="product_image_ad"
                 onChange={setEditableShots}
                 renderExtra={(shot) => (
                   <RegenerateShotImagePicker
-                    group={draftImageGroups(regenerateDraft).find((group) => group.shotId === shot.shotId)}
+                    group={orderedDraftImageGroups.find((group) => group.shotId === shot.shotId)}
                     selectedImages={regenerateDraft.selectedImages}
                     onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })}
                     showScore={Boolean(regenerateDraft.taskInput.imageScoringEnabled)}
@@ -2928,7 +2938,7 @@ function RegenerateControls({
         )}
         {regenerateStage === "FINAL_COMPOSING" && (
           <section className="regen-section">
-            <MediaGrid groups={draftVideoGroups(regenerateDraft)} selected={regenerateDraft.selectedVideos} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedVideos: value })} type="video" showScore={Boolean(regenerateDraft.taskInput.videoScoringEnabled)} />
+            <MediaGrid groups={orderedDraftVideoGroups} selected={regenerateDraft.selectedVideos} onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedVideos: value })} type="video" showScore={Boolean(regenerateDraft.taskInput.videoScoringEnabled)} />
           </section>
         )}
       </div>
@@ -3076,12 +3086,24 @@ function selectedVideosFromDraft(draft: RegenerateDraft): SelectedVideo[] {
     });
 }
 
+/**
+ * 功能描述：读取重燃草稿中的图片候选组，并按分镜 ID 自然顺序兜底排序。
+ * 参数解释：draft 表示重燃表单草稿数据。
+ * 返回对象描述：返回排序后的图片候选组列表，不修改原始草稿。
+ * 可能抛出的异常：无。
+ */
 function draftImageGroups(draft: RegenerateDraft): ShotImageGroup[] {
-  return draft.imageGroups;
+  return sortByShotId(draft.imageGroups);
 }
 
+/**
+ * 功能描述：读取重燃草稿中的视频候选组，并按分镜 ID 自然顺序兜底排序。
+ * 参数解释：draft 表示重燃表单草稿数据。
+ * 返回对象描述：返回排序后的视频候选组列表，不修改原始草稿。
+ * 可能抛出的异常：无。
+ */
 function draftVideoGroups(draft: RegenerateDraft): ShotVideoGroup[] {
-  return draft.videoGroups;
+  return sortByShotId(draft.videoGroups);
 }
 
 function readFileAsDataUrl(file: File) {
