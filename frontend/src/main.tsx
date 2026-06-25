@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Archive,
@@ -1289,12 +1289,6 @@ function WorkflowView(props: WorkflowViewProps) {
           onReturnCurrent={returnToCurrentStage}
         />
       )}
-      {readOnly && (
-        <div className="review-mode-banner" role="status">
-          <span>当前阶段仍为「{stageText(task.workflowType, task.stage)}」— 此处仅查看，不可编辑</span>
-          <button type="button" className="link-button" onClick={returnToCurrentStage}>返回当前阶段</button>
-        </div>
-      )}
       <section className={`stage-canvas ${task.status === "RUNNING" ? "is-running" : ""}`}>
         {task.status === "RUNNING" && (
           <div className="stage-running-overlay" aria-live="polite">
@@ -1372,6 +1366,53 @@ function RegenerateDrawer({ children, onClose }: { children: React.ReactNode; on
   );
 }
 
+function CopyButton({
+  text,
+  label,
+  copiedLabel = "已复制",
+  disabled,
+  className = "link-button",
+  iconSize = 14
+}: {
+  text: string;
+  label: string;
+  copiedLabel?: string;
+  disabled?: boolean;
+  className?: string;
+  iconSize?: number;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+  }, []);
+
+  async function handleCopy() {
+    if (disabled || !text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className={`copy-button ${className} ${copied ? "copied" : ""}`}
+      disabled={disabled}
+      onClick={() => void handleCopy()}
+    >
+      {copied ? <Check size={iconSize} className="copy-button-icon" /> : <Copy size={iconSize} className="copy-button-icon" />}
+      <span>{copied ? copiedLabel : label}</span>
+    </button>
+  );
+}
+
 function ErrorPanel({
   task,
   onRegenerateFromFailure,
@@ -1396,10 +1437,7 @@ function ErrorPanel({
       </div>
       <p>{task.errorMessage || "任务执行失败，请查看服务端日志获取更多信息。"}</p>
       <div className="error-panel-actions">
-        <button type="button" className="secondary" onClick={() => navigator.clipboard.writeText(errorText)}>
-          <Copy size={16} />
-          复制错误
-        </button>
+        <CopyButton text={errorText} label="复制错误" className="secondary" iconSize={16} />
         <button type="button" className="primary-outline" onClick={onRegenerateFromFailure}>
           从失败阶段重新生成
         </button>
@@ -1639,6 +1677,7 @@ function ShotEditorList({
   onChange: (shots: Shot[]) => void;
   renderExtra?: (shot: Shot) => React.ReactNode;
 }) {
+  const activeShotId = useShotScriptNav();
   const promptLabel = workflowType === "video_storyboard_ad" ? "画面总结" : "视觉提示词";
   const actionLabel = workflowType === "video_storyboard_ad" ? "镜头动作" : "运镜 / 动作";
   const wordsLabel = workflowType === "video_storyboard_ad" ? "口播 / 字幕" : "对白 / 旁白";
@@ -1651,7 +1690,11 @@ function ShotEditorList({
   return (
     <div className="shot-list">
       {shots.map((shot) => (
-        <article className="shot-card" key={shot.shotId}>
+        <article
+          className={`shot-card panel-card${activeShotId === shot.shotId ? " is-current" : ""}`}
+          id={`shot-editor-${shot.shotId}`}
+          key={shot.shotId}
+        >
           <header>
             <b>{shot.shotId}</b>
             <label className="shot-duration-inline">
@@ -1784,24 +1827,188 @@ function VideoGenerationShotEditor({
   );
 }
 
+const ShotScriptNavContext = createContext("");
+
+function useShotScriptNav() {
+  return useContext(ShotScriptNavContext);
+}
+
+const ShotReviewNavContext = createContext("");
+
+function useShotReviewNav() {
+  return useContext(ShotReviewNavContext);
+}
+
+function reviewCardClassName(isCurrent: boolean) {
+  const classes = ["shot-review-card", "panel-card"];
+  if (isCurrent) classes.push("is-current");
+  return classes.join(" ");
+}
+
+function scrollToShotCard(shotId: string, prefix = "shot-editor") {
+  const target = document.getElementById(`${prefix}-${shotId}`);
+  const scrollHost = target?.closest(".shot-review-main");
+  if (!target || !(scrollHost instanceof HTMLElement)) return;
+  const targetTop = target.getBoundingClientRect().top - scrollHost.getBoundingClientRect().top + scrollHost.scrollTop;
+  const centeredTop = targetTop - Math.max((scrollHost.clientHeight - target.clientHeight) / 2, 12);
+  scrollHost.scrollTo({ top: Math.max(centeredTop, 0), behavior: "smooth" });
+}
+
+type ShotNavItem = {
+  shotId: string;
+  stateClass: string;
+  badge: string;
+  disabled?: boolean;
+  isCurrent?: boolean;
+};
+
+function ShotNavPanel({
+  items,
+  onSelect,
+  hint
+}: {
+  items: ShotNavItem[];
+  onSelect: (shotId: string) => void;
+  hint?: string;
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <aside className="shot-review-nav panel-card" aria-label="分镜导航">
+      <h3>分镜导航</h3>
+      {hint && <p className="shot-nav-hint">{hint}</p>}
+      <div className="shot-review-nav-list">
+        {items.map((item) => (
+          <button
+            key={item.shotId}
+            type="button"
+            className={`shot-review-nav-item ${item.stateClass}`}
+            disabled={item.disabled}
+            aria-current={item.isCurrent ? "true" : undefined}
+            onClick={() => onSelect(item.shotId)}
+          >
+            <span>{item.shotId}</span>
+            <em>{item.badge}</em>
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function useActiveShotId(shots: Array<{ shotId: string }>) {
+  const [activeShotId, setActiveShotId] = useState(() => shots[0]?.shotId ?? "");
+
+  useEffect(() => {
+    if (shots.length === 0) {
+      setActiveShotId("");
+      return;
+    }
+    if (!shots.some((shot) => shot.shotId === activeShotId)) {
+      setActiveShotId(shots[0].shotId);
+    }
+  }, [shots, activeShotId]);
+
+  return [activeShotId, setActiveShotId] as const;
+}
+
+function useScrollSpyShotId(
+  shots: Array<{ shotId: string }>,
+  activeShotId: string,
+  setActiveShotId: (shotId: string) => void,
+  scrollRootRef: React.RefObject<HTMLDivElement | null>,
+  cardPrefix = "shot-editor"
+) {
+  useEffect(() => {
+    const root = scrollRootRef.current;
+    if (!root || shots.length === 0) return;
+
+    const cards = shots
+      .map((shot) => document.getElementById(`${cardPrefix}-${shot.shotId}`))
+      .filter((node): node is HTMLElement => node instanceof HTMLElement);
+    if (cards.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+        if (!visible?.target.id) return;
+        const shotId = visible.target.id.slice(`${cardPrefix}-`.length);
+        if (shotId && shotId !== activeShotId) {
+          setActiveShotId(shotId);
+        }
+      },
+      { root, threshold: [0.35, 0.55, 0.75], rootMargin: "-10% 0px -35% 0px" }
+    );
+
+    cards.forEach((card) => observer.observe(card));
+    return () => observer.disconnect();
+  }, [shots, activeShotId, setActiveShotId, scrollRootRef, cardPrefix]);
+}
+
+function ShotEditorNavigator({
+  shots,
+  activeShotId,
+  onSelect
+}: {
+  shots: Shot[];
+  activeShotId: string;
+  onSelect: (shotId: string) => void;
+}) {
+  const items: ShotNavItem[] = shots.map((shot) => {
+    const isCurrent = shot.shotId === activeShotId;
+    return {
+      shotId: shot.shotId,
+      stateClass: isCurrent ? "script-current" : "script-idle",
+      badge: `${shot.duration ?? "-"}秒`,
+      isCurrent
+    };
+  });
+  return (
+    <ShotNavPanel
+      items={items}
+      onSelect={onSelect}
+      hint="点击定位分镜；滚动右侧列表也会同步当前项"
+    />
+  );
+}
+
+function ShotEditorLayout({ shots, children }: { shots: Shot[]; children: React.ReactNode }) {
+  const [activeShotId, setActiveShotId] = useActiveShotId(shots);
+  const mainRef = useRef<HTMLDivElement>(null);
+  useScrollSpyShotId(shots, activeShotId, setActiveShotId, mainRef);
+
+  function handleSelect(shotId: string) {
+    setActiveShotId(shotId);
+    scrollToShotCard(shotId);
+  }
+
+  return (
+    <ShotScriptNavContext.Provider value={activeShotId}>
+      <div className="shot-review-layout">
+        <ShotEditorNavigator shots={shots} activeShotId={activeShotId} onSelect={handleSelect} />
+        <div className="shot-review-main" ref={mainRef}>
+          {children}
+        </div>
+      </div>
+    </ShotScriptNavContext.Provider>
+  );
+}
+
 function ShotStage({ task, editableShots, setEditableShots, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   return (
-    <div className="stage-stack">
-      <div className="two-pane">
-        <section className="panel-card">
-          <div className="section-head"><h3>分镜序列</h3><span>{editableShots.length} 个分镜</span></div>
-          <ShotEditorList shots={editableShots} readOnly={readOnly} workflowType={task.workflowType ?? "product_image_ad"} onChange={setEditableShots} />
-        </section>
-        <aside className="panel-card">
-          <h3>编辑范围</h3>
-          <div className="summary-list">
-            <span>当前流程<b>{stageText(task.workflowType, task.stage)}</b></span>
-            <span>任务状态<b>{statusText(task.status)}</b></span>
-            <span>{readOnly ? "查看模式" : "可编辑字段"}<b>{readOnly ? "历史节点只读" : "时长 / 提示词 / 运镜 / 口播"}</b></span>
-          </div>
-          <p className="hint">保存后会保留分镜 ID 和顺序，用修改后的分镜参数重新生成后续图片和视频。</p>
-        </aside>
-      </div>
+    <div className="stage-stack shot-review-stage">
+      <ShotEditorLayout shots={editableShots}>
+        <div className="shot-review-list">
+          <ShotEditorList
+            shots={editableShots}
+            readOnly={readOnly}
+            workflowType={task.workflowType ?? "product_image_ad"}
+            onChange={setEditableShots}
+          />
+        </div>
+      </ShotEditorLayout>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存分镜"} onSave={() => void onSaveStage()} dirty={isDirty} disabled={readOnly} />
       )}
@@ -1811,19 +2018,21 @@ function ShotStage({ task, editableShots, setEditableShots, readOnly, onSaveStag
 
 function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   return (
-    <div className="stage-stack">
-      <div className="two-pane">
-        <section className="panel-card marketing-plan-card">
+    <div className="stage-stack shot-review-stage shot-script-stage">
+      <section className="panel-card shot-understanding-panel">
+        <div className="section-head compact">
           <h3>视频理解结果</h3>
-          <label>素材标题<input readOnly value={task.videoConfig?.productInfo?.name ?? task.request?.sourceVideoFileName ?? "视频素材"} /></label>
-          <label>源视频链接<textarea readOnly value={task.request?.sourceVideoUrl ?? resolveLegacyVideoUrl(task.request)} /></label>
-          <label>理解说明<textarea className="marketing-advice" readOnly value={task.videoConfig?.videoAdvice ?? ""} /></label>
-        </section>
-        <section className="panel-card">
-          <div className="section-head"><h3>视频总结分镜</h3><span>{editableShots.length} 个分镜</span></div>
+          <span>{editableShots.length} 个分镜</span>
+        </div>
+        <label>素材标题<input readOnly value={task.videoConfig?.productInfo?.name ?? task.request?.sourceVideoFileName ?? "视频素材"} /></label>
+        <label>源视频链接<textarea readOnly value={task.request?.sourceVideoUrl ?? resolveLegacyVideoUrl(task.request)} /></label>
+        <label>理解说明<textarea className="marketing-advice" readOnly value={task.videoConfig?.videoAdvice ?? ""} /></label>
+      </section>
+      <ShotEditorLayout shots={editableShots}>
+        <div className="shot-review-list">
           <ShotEditorList shots={editableShots} readOnly={readOnly} workflowType="video_storyboard_ad" onChange={setEditableShots} />
-        </section>
-      </div>
+        </div>
+      </ShotEditorLayout>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存分镜"} onSave={() => void onSaveStage()} dirty={isDirty} disabled={readOnly} />
       )}
@@ -1860,47 +2069,33 @@ function shotFromImageGroup(group: ShotImageGroup, orderNo: number): Shot {
  */
 function ShotReviewNavigator({
   groups,
-  selected,
-  assetKey
+  assetKey,
+  activeShotId,
+  onSelect
 }: {
   groups: Array<ShotImageGroup | ShotVideoGroup>;
-  selected: Record<string, string>;
   assetKey: "images" | "videos";
+  activeShotId: string;
+  onSelect: (shotId: string) => void;
 }) {
-  function jumpToShot(shotId: string) {
-    const target = document.getElementById(`shot-review-${shotId}`);
-    const scrollHost = target?.closest(".shot-review-main");
-    if (!target || !(scrollHost instanceof HTMLElement)) return;
-    const targetTop = target.getBoundingClientRect().top - scrollHost.getBoundingClientRect().top + scrollHost.scrollTop;
-    const centeredTop = targetTop - Math.max((scrollHost.clientHeight - target.clientHeight) / 2, 12);
-    scrollHost.scrollTo({ top: Math.max(centeredTop, 0), behavior: "smooth" });
-  }
-
-  if (groups.length === 0) return null;
+  const items: ShotNavItem[] = groups.map((group) => {
+    const assets = assetKey === "images" && "images" in group ? group.images : "videos" in group ? group.videos : [];
+    const isActive = group.shotId === activeShotId;
+    return {
+      shotId: group.shotId,
+      stateClass: isActive ? "active" : "pending",
+      badge: `${group.duration ?? "-"}秒`,
+      disabled: assets.length === 0,
+      isCurrent: isActive
+    };
+  });
 
   return (
-    <aside className="shot-review-nav panel-card" aria-label="分镜导航">
-      <h3>分镜导航</h3>
-      <div className="shot-review-nav-list">
-        {groups.map((group) => {
-          const assets = assetKey === "images" && "images" in group ? group.images : "videos" in group ? group.videos : [];
-          const isSelected = Boolean(selected[group.shotId]);
-          const isActionable = assets.length > 0;
-          return (
-            <button
-              key={group.shotId}
-              type="button"
-              className={`shot-review-nav-item ${isSelected ? "selected" : "pending"}`}
-              disabled={!isActionable}
-              onClick={() => jumpToShot(group.shotId)}
-            >
-              <span>{group.shotId}</span>
-              <em>{isSelected ? "已选" : "待选择"}</em>
-            </button>
-          );
-        })}
-      </div>
-    </aside>
+    <ShotNavPanel
+      items={items}
+      onSelect={onSelect}
+      hint="点击或滚动右侧列表定位当前分镜"
+    />
   );
 }
 
@@ -1912,22 +2107,36 @@ function ShotReviewNavigator({
  */
 function ShotReviewLayout({
   groups,
-  selected,
   assetKey,
   children
 }: {
   groups: Array<ShotImageGroup | ShotVideoGroup>;
-  selected: Record<string, string>;
   assetKey: "images" | "videos";
   children: React.ReactNode;
 }) {
+  const [activeShotId, setActiveShotId] = useActiveShotId(groups);
+  const mainRef = useRef<HTMLDivElement>(null);
+  useScrollSpyShotId(groups, activeShotId, setActiveShotId, mainRef, "shot-review");
+
+  function handleSelect(shotId: string) {
+    setActiveShotId(shotId);
+    scrollToShotCard(shotId, "shot-review");
+  }
+
   return (
-    <div className="shot-review-layout">
-      <ShotReviewNavigator groups={groups} selected={selected} assetKey={assetKey} />
-      <div className="shot-review-main">
-        {children}
+    <ShotReviewNavContext.Provider value={activeShotId}>
+      <div className="shot-review-layout">
+        <ShotReviewNavigator
+          groups={groups}
+          assetKey={assetKey}
+          activeShotId={activeShotId}
+          onSelect={handleSelect}
+        />
+        <div className="shot-review-main" ref={mainRef}>
+          {children}
+        </div>
       </div>
-    </div>
+    </ShotReviewNavContext.Provider>
   );
 }
 
@@ -1984,15 +2193,13 @@ function ShotReviewCard({
   onToggleDetails?: () => void;
 }) {
   const [uploadError, setUploadError] = useState("");
+  const activeShotId = useShotReviewNav();
   const group = imageGroup ?? videoGroup;
   if (!group) return null;
   const shotId = group.shotId;
 
   const assets = imageGroup?.images ?? videoGroup?.videos ?? [];
-  const selectedAssetId = mode === "video-evaluate"
-    ? selectedVideos?.[shotId]
-    : selectedImages?.[shotId];
-  const isSelected = Boolean(selectedAssetId);
+  const isCurrent = activeShotId === shotId;
   const promptLabel = workflowType === "video_storyboard_ad" ? "画面总结" : "视觉提示词";
   const actionLabel = workflowType === "video_storyboard_ad" ? "镜头动作" : "运镜 / 动作";
   const wordsLabel = workflowType === "video_storyboard_ad" ? "口播 / 字幕" : "对白 / 旁白";
@@ -2020,14 +2227,13 @@ function ShotReviewCard({
   }
 
   return (
-    <article className="shot-review-card panel-card" id={cardId}>
+    <article className={reviewCardClassName(isCurrent)} id={cardId}>
       <header className="shot-review-header">
         <div>
           <b>{shotId}</b>
           <span>{group.duration ?? "-"} 秒 · {assets.length} 个候选</span>
         </div>
         <div className="shot-review-header-actions">
-          <em className={isSelected ? "ready" : "pending"}>{isSelected ? "已选择" : "待选择"}</em>
           <button
             type="button"
             className={`shot-review-toggle ${detailsOpen ? "open" : ""}`}
@@ -2354,7 +2560,7 @@ function ImageGenerateStage({ task, editableShots, setEditableShots, selectedIma
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
-      <ShotReviewLayout groups={groups} selected={selectedImages} assetKey="images">
+      <ShotReviewLayout groups={groups} assetKey="images">
         <div className="shot-review-list">
           {groups.map((group) => (
             <ShotReviewCard
@@ -2401,7 +2607,7 @@ function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedIma
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
-      <ShotReviewLayout groups={groups} selected={selectedImages} assetKey="images">
+      <ShotReviewLayout groups={groups} assetKey="images">
         <div className="shot-review-list">
           {groups.map((group) => (
             <ShotReviewCard
@@ -2545,7 +2751,7 @@ function VideoEvaluateStage({ task, selectedImages, selectedVideos, setSelectedV
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
-      <ShotReviewLayout groups={groups} selected={selectedVideos} assetKey="videos">
+      <ShotReviewLayout groups={groups} assetKey="videos">
         <div className="shot-review-list">
           {groups.map((group) => (
             <ShotReviewCard
@@ -2575,41 +2781,69 @@ function VideoEvaluateStage({ task, selectedImages, selectedVideos, setSelectedV
 }
 
 function FinalStage({ task }: { task: TaskDetail }) {
+  const duration = task.videoConfig?.duration ?? task.request?.duration ?? "-";
+  const aspectRatio = task.videoConfig?.aspectRatio ?? task.request?.aspectRatio ?? "9:16";
+  const releaseCopy = stripVideoUrls(task.finalVideo?.videoRelease ?? "");
+  const copyPayload = [releaseCopy, ...(task.finalVideo?.hashtags ?? [])].filter(Boolean).join("\n");
   return (
-    <div className="final-layout">
-      <section className="final-preview-panel">
-        <div className="final-title">
-          <span><CheckCircle2 size={16} />生成完成</span>
-          <h2>{finalTitle(task)}</h2>
-          <p>任务 ID: {task.taskId} · 时长: {task.videoConfig?.duration ?? "-"}s</p>
-        </div>
-        {task.finalVideo?.videoUrl ? (
-          <video className="final-video" src={task.finalVideo.videoUrl} controls />
-        ) : (
-          <div className="final-video placeholder"><PlayIcon /></div>
-        )}
-      </section>
-      <aside className="final-publish-panel">
-        <section className="final-copy-block">
-          <div className="final-section-title">
-            <h3>发布文案</h3>
-            <button disabled={!task.finalVideo?.videoRelease} onClick={() => navigator.clipboard.writeText(task.finalVideo?.videoRelease ?? "")}><Copy size={16} />复制文案</button>
+    <div className="stage-stack final-stage">
+      <div className="two-pane final-stage-layout">
+        <section className="panel-card final-preview-card">
+          <div className="section-head compact">
+            <h3>成片预览</h3>
+            <span className="final-ready-badge">
+              <CheckCircle2 size={14} />
+              {task.finalVideo?.videoUrl ? "生成完成" : "等待合成"}
+              {" · "}{duration}s · {aspectRatio}
+            </span>
           </div>
-          <blockquote>{task.finalVideo?.videoRelease ?? "等待生成发布文案"}</blockquote>
-          <div className="style-tags">{(task.finalVideo?.hashtags ?? []).map((tag) => <span key={tag}>{tag}</span>)}</div>
-        </section>
-        <section className="final-share-block">
-          <h3>分享链接</h3>
-          <label>视频地址</label>
-          <div className="copy-line">
-            <input readOnly value={task.finalVideo?.videoUrl ?? ""} />
-            <button disabled={!task.finalVideo?.videoUrl} onClick={() => navigator.clipboard.writeText(task.finalVideo?.videoUrl ?? "")}><Copy size={16} />复制</button>
+          <div className="final-video-wrap" style={finalVideoFrameStyle(aspectRatio)}>
+            {task.finalVideo?.videoUrl ? (
+              <video className="final-video" src={task.finalVideo.videoUrl} controls />
+            ) : (
+              <div className="final-video placeholder"><PlayIcon /></div>
+            )}
           </div>
-          <a className={`download-button ${task.finalVideo?.videoUrl ? "" : "disabled"}`} href={task.finalVideo?.videoUrl || undefined} download target="_blank" rel="noreferrer">
-            <Download size={18} />下载高清视频
-          </a>
         </section>
-      </aside>
+        <aside className="panel-card final-output-card">
+          <section className="final-copy-block">
+            <div className="section-head compact">
+              <h3>发布文案</h3>
+              <CopyButton
+                text={copyPayload}
+                label="复制文案"
+                disabled={!releaseCopy}
+              />
+            </div>
+            <blockquote>{releaseCopy || "等待生成发布文案"}</blockquote>
+            <div className="style-tags">{(task.finalVideo?.hashtags ?? []).map((tag) => <span key={tag}>{tag}</span>)}</div>
+          </section>
+          <section className="final-share-block">
+            <h3>视频链接</h3>
+            <label>视频地址</label>
+            <div className="copy-line">
+              <input readOnly value={task.finalVideo?.videoUrl ?? ""} placeholder="暂无视频链接" />
+              <CopyButton
+                text={task.finalVideo?.videoUrl ?? ""}
+                label="复制链接"
+                className="secondary copy-line-button"
+                disabled={!task.finalVideo?.videoUrl}
+                iconSize={16}
+              />
+            </div>
+            <a
+              className={`primary download-button ${task.finalVideo?.videoUrl ? "" : "disabled"}`}
+              href={task.finalVideo?.videoUrl || undefined}
+              download
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Download size={18} />
+              下载高清视频
+            </a>
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -2946,8 +3180,8 @@ function RegenerateControls({
           </section>
         )}
       </div>
-      <div className="regen-actions">
-        <button className="primary" onClick={onRegenerate} disabled={busy}>应用重燃</button>
+      <div className="stage-save-bar regen-actions">
+        <button type="button" className="primary" onClick={onRegenerate} disabled={busy}>应用重燃</button>
       </div>
     </div>
   );
@@ -3254,6 +3488,32 @@ function summaryTitle(value: string) {
  */
 function workflowLabel(workflowType: WorkflowType) {
   return workflowOptions.find((item) => item.value === workflowType)?.shortLabel ?? workflowType;
+}
+
+function toCssAspectRatio(aspectRatio?: string) {
+  if (!aspectRatio || aspectRatio === "adaptive") return "9 / 16";
+  const parts = aspectRatio.split(":").map((part) => Number(part.trim()));
+  if (parts.length === 2 && parts.every((part) => Number.isFinite(part) && part > 0)) {
+    return `${parts[0]} / ${parts[1]}`;
+  }
+  return "9 / 16";
+}
+
+function finalVideoFrameStyle(aspectRatio?: string): React.CSSProperties {
+  const cssRatio = toCssAspectRatio(aspectRatio);
+  const parts = (aspectRatio ?? "9:16").split(":").map((part) => Number(part.trim()));
+  const landscape = parts.length === 2 && parts[0] >= parts[1];
+  return {
+    "--final-aspect-ratio": cssRatio,
+    "--final-max-width": landscape ? "100%" : "min(100%, 240px)"
+  } as React.CSSProperties;
+}
+
+function stripVideoUrls(text: string) {
+  return text
+    .replace(/https?:\/\/[^\s<>"']+/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function platformLabel(platform?: string) {

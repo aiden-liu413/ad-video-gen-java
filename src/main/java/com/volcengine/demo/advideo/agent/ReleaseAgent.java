@@ -33,9 +33,8 @@ public class ReleaseAgent {
                         商品：%s
                         发布平台：%s
                         平台文案要求：%s
-                        视频地址：%s
                         请直接输出文案正文。
-                        """.formatted(productName, targetPlatform, releaseAdvice, multimedia.videoUrl())
+                        """.formatted(productName, targetPlatform, releaseAdvice)
         );
         return new ReleasePlan(
                 headline(productName, targetPlatform),

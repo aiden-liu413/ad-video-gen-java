@@ -1070,7 +1070,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             String productName = fallbackProductName(request, config);
             return new ReleasePlan(
                     productName + "广告视频",
-                    "视频已合成，可直接预览和下载：" + finalVideoUrl,
+                    "视频已合成，可直接预览和下载。",
                     List.of("#" + productName, "#广告视频"),
                     finalVideoUrl
             );
