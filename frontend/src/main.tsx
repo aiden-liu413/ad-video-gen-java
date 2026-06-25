@@ -694,8 +694,7 @@ function App() {
     return {
       ...regenerateDraft,
       shots: editableShots,
-      imageGroups: editableImageGroups.length > 0 ? editableImageGroups : regenerateDraft.imageGroups,
-      selectedImages
+      imageGroups: editableImageGroups.length > 0 ? editableImageGroups : regenerateDraft.imageGroups
     };
   }
 
@@ -2681,13 +2680,11 @@ function RegenerateControls({
   regenerateDraft,
   editableShots,
   editableImageGroups,
-  selectedImages,
   setRegenerateStage,
   setRegenerateReason,
   setRegenerateDraft,
   setEditableShots,
   setEditableImageGroups,
-  setSelectedImages,
   onRegenerate,
   busy
 }: WorkflowViewProps) {
@@ -2823,7 +2820,15 @@ function RegenerateControls({
               <label>候选视频数量<input type="number" min={1} max={5} value={regenerateDraft.taskInput.generateVideoCount ?? 1} onChange={(event) => updateTaskInput({ generateVideoCount: Number(event.target.value || 1) })} /></label>
               <label>视频比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
             </div>
-            <p className="regen-hint">仅修改分镜参数与生成配置，已生成的图片/视频候选不会在此展示。</p>
+            <p className="regen-hint">可重新选择用于生成分镜视频的候选图；已生成的视频候选不会在此展示。</p>
+            <div className="section-head"><h4>用于生成分镜视频的候选图</h4><span>{draftImageGroups(regenerateDraft).length} 组分镜</span></div>
+            <MediaGrid
+              groups={sortByShotId(draftImageGroups(regenerateDraft))}
+              selected={regenerateDraft.selectedImages}
+              onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })}
+              type="image"
+              showScore={Boolean(regenerateDraft.taskInput.imageScoringEnabled)}
+            />
             {task.workflowType === "video_storyboard_ad" ? (
               <VideoGenerationShotEditor
                 groups={editableImageGroups}
