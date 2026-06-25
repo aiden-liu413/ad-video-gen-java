@@ -2591,7 +2591,10 @@ function FinalStage({ task }: { task: TaskDetail }) {
       </section>
       <aside className="final-publish-panel">
         <section className="final-copy-block">
-          <h3>发布文案</h3>
+          <div className="final-section-title">
+            <h3>发布文案</h3>
+            <button disabled={!task.finalVideo?.videoRelease} onClick={() => navigator.clipboard.writeText(task.finalVideo?.videoRelease ?? "")}><Copy size={16} />复制文案</button>
+          </div>
           <blockquote>{task.finalVideo?.videoRelease ?? "等待生成发布文案"}</blockquote>
           <div className="style-tags">{(task.finalVideo?.hashtags ?? []).map((tag) => <span key={tag}>{tag}</span>)}</div>
         </section>

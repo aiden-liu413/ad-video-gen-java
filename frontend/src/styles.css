@@ -274,6 +274,10 @@ pre {
   padding: 28px;
 }
 
+.workspace:has(.final-layout) {
+  overflow: hidden;
+}
+
 .primary {
   border-color: #14a5bd;
   background: linear-gradient(135deg, #20c6da, #198fd2);
@@ -791,6 +795,34 @@ pre {
   gap: 20px;
 }
 
+.workflow-page:has(.final-layout) {
+  height: calc(100vh - 128px);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.workflow-page:has(.final-layout) .workflow-head {
+  padding-block: 8px;
+}
+
+.workflow-page:has(.final-layout) .stage-dot {
+  min-height: 64px;
+  padding: 7px 8px;
+}
+
+.workflow-page:has(.final-layout) .stage-dot span {
+  display: none;
+}
+
+.workflow-page:has(.final-layout) .task-summary-bar span {
+  min-height: 46px;
+  padding-block: 7px;
+}
+
+.workflow-page:has(.final-layout) .stage-canvas {
+  min-height: 0;
+}
+
 .workflow-head {
   padding: 16px 18px;
   display: flex;
@@ -1140,6 +1172,8 @@ pre {
   grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.86fr);
   gap: 28px;
   align-items: stretch;
+  height: 100%;
+  min-height: 0;
 }
 
 .section-head {
@@ -2349,7 +2383,7 @@ pre {
 }
 
 .final-title {
-  margin-bottom: 28px;
+  margin-bottom: 16px;
 }
 
 .final-title span {
@@ -2361,8 +2395,8 @@ pre {
 }
 
 .final-title h2 {
-  margin: 20px 0 10px;
-  font-size: 34px;
+  margin: 12px 0 6px;
+  font-size: 30px;
   line-height: 1.2;
 }
 
@@ -2374,6 +2408,7 @@ pre {
 .final-preview-panel,
 .final-publish-panel {
   min-width: 0;
+  min-height: 0;
   border: 1px solid #cddcec;
   border-radius: 16px;
   background: #fff;
@@ -2381,14 +2416,19 @@ pre {
 }
 
 .final-preview-panel {
-  padding: 32px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 24px;
+  overflow: hidden;
 }
 
 .final-publish-panel {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   align-content: start;
-  gap: 34px;
-  padding: 38px;
+  gap: 22px;
+  padding: 26px;
+  overflow: hidden;
 }
 
 .final-copy-block,
@@ -2398,13 +2438,36 @@ pre {
 
 .final-copy-block h3,
 .final-share-block h3 {
-  margin: 0 0 24px;
+  margin: 0;
   color: #0e1b2f;
-  font-size: 28px;
+  font-size: 26px;
   line-height: 1.2;
 }
 
+.final-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.final-section-title button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  color: #0b758a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.final-share-block h3 {
+  margin-bottom: 16px;
+}
+
 .final-video {
+  height: 100%;
+  min-height: 0;
   width: 100%;
   aspect-ratio: 16 / 10;
   border: 3px solid #209af0;
@@ -2438,15 +2501,16 @@ pre {
 }
 
 .final-publish-panel blockquote {
-  min-height: 156px;
-  margin: 0 0 26px;
-  padding: 24px;
+  max-height: min(31vh, 260px);
+  margin: 0 0 16px;
+  padding: 18px 20px;
   border: 1px solid #cddcec;
   border-radius: 12px;
   background: #f9fbfe;
   color: #1e2a3c;
-  font-size: 19px;
-  line-height: 1.8;
+  font-size: 17px;
+  line-height: 1.65;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
 
@@ -2454,7 +2518,7 @@ pre {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 104px;
   gap: 0;
-  margin: 8px 0 26px;
+  margin: 8px 0 20px;
 }
 
 .final-publish-panel .copy-line input {
@@ -2478,7 +2542,7 @@ pre {
 
 .download-button {
   width: min(240px, 100%);
-  min-height: 54px;
+  min-height: 50px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
