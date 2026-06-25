@@ -1188,10 +1188,16 @@ pre {
   grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+  min-height: 0;
 }
 
 .shot-review-main {
+  max-height: calc(100vh - 190px);
   min-width: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scroll-behavior: smooth;
+  scroll-padding-top: 8px;
 }
 
 .shot-review-nav {
@@ -1347,13 +1353,13 @@ pre {
 
 .shot-review-image-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
 }
 
 .shot-review-video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 12px;
 }
 
@@ -1835,7 +1841,7 @@ pre {
 
 .media-score-meta small.clamped {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -2504,6 +2510,12 @@ blockquote {
 
   .shot-review-nav {
     position: static;
+  }
+
+  .shot-review-main {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 
   .filter-row,

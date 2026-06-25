@@ -1735,7 +1735,7 @@ function shotFromImageGroup(group: ShotImageGroup, orderNo: number): Shot {
 }
 
 /**
- * 功能描述：渲染图片和视频审核页左侧的分镜导航，并支持点击定位到对应分镜卡片。
+ * 功能描述：渲染图片和视频审核页左侧的分镜导航，并支持点击后只滚动右侧分镜列表定位到对应卡片。
  * 参数解释：groups 表示当前审核页的分镜候选集合；selected 表示已选择素材的分镜映射；assetKey 表示候选素材类型。
  * 返回对象描述：返回可点击的分镜导航区域；当没有分镜候选时返回 null。
  * 可能抛出的异常：无。
@@ -1750,7 +1750,11 @@ function ShotReviewNavigator({
   assetKey: "images" | "videos";
 }) {
   function jumpToShot(shotId: string) {
-    document.getElementById(`shot-review-${shotId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const target = document.getElementById(`shot-review-${shotId}`);
+    const scrollHost = target?.closest(".shot-review-main");
+    if (!target || !(scrollHost instanceof HTMLElement)) return;
+    const targetTop = target.getBoundingClientRect().top - scrollHost.getBoundingClientRect().top + scrollHost.scrollTop;
+    scrollHost.scrollTo({ top: Math.max(targetTop - 8, 0), behavior: "smooth" });
   }
 
   if (groups.length === 0) return null;
@@ -2466,32 +2470,28 @@ function FinalStage({ task }: { task: TaskDetail }) {
   );
 }
 
+/**
+ * 功能描述：渲染素材评分信息，长评分原因以省略形式展示并在鼠标悬浮时显示全文。
+ * 参数解释：score 表示评分数值；reason 表示评分原因；pendingLabel 表示未完成评分时的占位文案。
+ * 返回对象描述：返回素材卡片中的评分摘要区域。
+ * 可能抛出的异常：无。
+ */
 function MediaScoreMeta({
   score,
   reason,
-  pendingLabel,
-  allExpanded = false
+  pendingLabel
 }: {
   score?: number;
   reason?: string;
   pendingLabel?: string;
   allExpanded?: boolean;
 }) {
-  const [localExpanded, setLocalExpanded] = useState(false);
-  const expanded = allExpanded || localExpanded;
   const label = typeof score === "number" ? `${score} 分` : (pendingLabel ?? "待评分");
   return (
     <div className="media-score-meta">
       <span>{label}</span>
       {reason ? (
-        <>
-          <small className={expanded ? "expanded" : "clamped"}>{reason}</small>
-          {!allExpanded && (
-            <button type="button" className="link-button" onClick={() => setLocalExpanded((value) => !value)}>
-              {expanded ? "收起" : "展开"}
-            </button>
-          )}
-        </>
+        <small className="clamped" title={reason}>{reason}</small>
       ) : null}
     </div>
   );
@@ -2611,6 +2611,12 @@ function MediaGrid({
   );
 }
 
+/**
+ * 功能描述：渲染工作流重燃表单，根据选择阶段展示该阶段真正可修改的输入参数。
+ * 参数解释：task 表示任务详情；regenerateStage 表示当前重燃阶段；regenerateDraft 表示待提交草稿；onRegenerate 表示应用重燃回调；busy 表示提交状态。
+ * 返回对象描述：返回重燃抽屉内的阶段选择、输入表单和提交按钮。
+ * 可能抛出的异常：无。
+ */
 function RegenerateControls({
   task,
   regenerateStage,
@@ -2736,13 +2742,7 @@ function RegenerateControls({
                 <label>创意策略<textarea value={regenerateDraft.videoConfig.videoAdvice ?? ""} onChange={(event) => updateVideoConfig({ videoAdvice: event.target.value })} /></label>
               </>
             )}
-            <div className="section-head"><h4>分镜序列</h4><span>{editableShots.length} 个分镜</span></div>
-            <ShotEditorList
-              shots={editableShots}
-              readOnly={false}
-              workflowType={task.workflowType ?? "product_image_ad"}
-              onChange={setEditableShots}
-            />
+            <p className="regen-hint">分镜脚本重燃只修改上游策划和理解输入，不展示或复用之前已经生成的分镜内容。</p>
           </section>
         )}
         {regenerateStage === "IMAGE_GENERATING" && (
