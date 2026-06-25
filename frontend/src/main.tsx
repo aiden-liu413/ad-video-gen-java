@@ -1992,6 +1992,12 @@ function ShotReviewCard({
   );
 }
 
+/**
+ * 功能描述：渲染图片审核候选卡片列表，支持点击整张卡片或使用键盘选择素材。
+ * 参数解释：group 表示当前分镜图片候选组；selected 表示已选图片映射；onSelect 表示选择变更回调；readOnly 表示是否只读。
+ * 返回对象描述：返回图片候选卡片网格。
+ * 可能抛出的异常：无。
+ */
 function ImageCandidateGrid({
   group,
   selected,
@@ -2022,6 +2028,12 @@ function ImageCandidateGrid({
     onSelect({ ...selected, [group.shotId]: assetId });
   }
 
+  function handleCardKeyDown(event: React.KeyboardEvent<HTMLDivElement>, assetId: string) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggleSelect(assetId);
+  }
+
   function shouldShowScore(asset: ImageCandidate) {
     if (!showScore) return false;
     if (typeof asset.score === "number") return true;
@@ -2040,20 +2052,18 @@ function ImageCandidateGrid({
       {group.images.map((asset) => {
         const isSelected = selected[group.shotId] === asset.assetId;
         return (
-          <div className={`media-card compact ${isSelected ? "selected" : ""}`} key={asset.assetId}>
+          <div
+            className={`media-card compact selectable ${isSelected ? "selected" : ""}`}
+            key={asset.assetId}
+            role={readOnly ? undefined : "button"}
+            tabIndex={readOnly ? -1 : 0}
+            aria-pressed={readOnly ? undefined : isSelected}
+            onClick={() => toggleSelect(asset.assetId)}
+            onKeyDown={(event) => handleCardKeyDown(event, asset.assetId)}
+          >
             <div className="media-preview">
               {isRenderableImage(asset.url) ? <img src={asset.url} alt={asset.assetId} /> : <div className="mock-media">{asset.url}</div>}
             </div>
-            {!readOnly && (
-              <button
-                type="button"
-                className={`media-select-btn ${isSelected ? "active" : ""}`}
-                aria-pressed={isSelected}
-                onClick={() => toggleSelect(asset.assetId)}
-              >
-                {isSelected ? "已选中" : "选中此素材"}
-              </button>
-            )}
             {shouldShowScore(asset) && (
               <MediaScoreMeta
                 score={asset.score}
@@ -2075,6 +2085,12 @@ function ImageCandidateGrid({
   );
 }
 
+/**
+ * 功能描述：渲染视频审核候选卡片列表，支持点击整张卡片或使用键盘选择素材。
+ * 参数解释：group 表示当前分镜视频候选组；selected 表示已选视频映射；onSelect 表示选择变更回调；readOnly 表示是否只读。
+ * 返回对象描述：返回视频候选卡片网格；当没有候选视频时返回空态。
+ * 可能抛出的异常：无。
+ */
 function VideoCandidateGrid({
   group,
   selected,
@@ -2105,6 +2121,12 @@ function VideoCandidateGrid({
     onSelect({ ...selected, [group.shotId]: assetId });
   }
 
+  function handleCardKeyDown(event: React.KeyboardEvent<HTMLDivElement>, assetId: string) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggleSelect(assetId);
+  }
+
   function shouldShowScore(asset: VideoCandidate) {
     if (!showScore) return false;
     if (typeof asset.score === "number") return true;
@@ -2127,7 +2149,15 @@ function VideoCandidateGrid({
       {group.videos.map((asset) => {
         const isSelected = selected[group.shotId] === asset.assetId;
         return (
-          <div className={`media-card compact video-card ${isSelected ? "selected" : ""}`} key={asset.assetId}>
+          <div
+            className={`media-card compact video-card selectable ${isSelected ? "selected" : ""}`}
+            key={asset.assetId}
+            role={readOnly ? undefined : "button"}
+            tabIndex={readOnly ? -1 : 0}
+            aria-pressed={readOnly ? undefined : isSelected}
+            onClick={() => toggleSelect(asset.assetId)}
+            onKeyDown={(event) => handleCardKeyDown(event, asset.assetId)}
+          >
             <div className="media-preview">
               {isRenderableVideo(asset.url) ? (
                 <video
@@ -2141,16 +2171,6 @@ function VideoCandidateGrid({
                 <div className="mock-media">{asset.url}</div>
               )}
             </div>
-            {!readOnly && (
-              <button
-                type="button"
-                className={`media-select-btn ${isSelected ? "active" : ""}`}
-                aria-pressed={isSelected}
-                onClick={() => toggleSelect(asset.assetId)}
-              >
-                {isSelected ? "已选中" : "选中此素材"}
-              </button>
-            )}
             {shouldShowScore(asset) && (
               <MediaScoreMeta
                 score={asset.score}

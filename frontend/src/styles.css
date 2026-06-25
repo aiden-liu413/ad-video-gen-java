@@ -1813,6 +1813,17 @@ pre {
   box-shadow: 0 0 0 3px rgba(24, 184, 204, 0.15);
 }
 
+.media-card.selectable {
+  cursor: pointer;
+}
+
+.media-card.selectable:hover,
+.media-card.selectable:focus-visible {
+  border-color: #18b8cc;
+  box-shadow: 0 0 0 3px rgba(24, 184, 204, 0.12);
+  outline: none;
+}
+
 .media-preview img,
 .media-preview video,
 .media-preview .mock-media {
