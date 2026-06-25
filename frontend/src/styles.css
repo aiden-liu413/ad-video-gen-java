@@ -12,6 +12,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  overflow: hidden;
 }
 
 button,
@@ -81,7 +82,7 @@ pre {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   grid-template-rows: 72px minmax(0, 1fr);
@@ -1167,6 +1168,20 @@ pre {
   gap: 20px;
 }
 
+.stage-stack.shot-review-stage {
+  height: clamp(320px, calc(100vh - 430px), 620px);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+.shot-review-stage .stage-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 12px 0 0;
+  background: #f4f8fb;
+}
+
 .regen-hint {
   margin: 0;
   padding: 10px 12px;
@@ -1188,11 +1203,12 @@ pre {
   grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+  height: 100%;
   min-height: 0;
 }
 
 .shot-review-main {
-  max-height: calc(100vh - 190px);
+  height: 100%;
   min-width: 0;
   overflow-y: auto;
   padding-right: 4px;
@@ -1852,8 +1868,9 @@ pre {
 
 .media-score-meta small.clamped {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
+  min-height: 5.6em;
   overflow: hidden;
 }
 
@@ -2523,7 +2540,12 @@ blockquote {
     position: static;
   }
 
+  .stage-stack.shot-review-stage {
+    height: auto;
+  }
+
   .shot-review-main {
+    height: auto;
     max-height: none;
     overflow: visible;
     padding-right: 0;
