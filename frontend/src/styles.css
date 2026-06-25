@@ -1355,24 +1355,70 @@ pre {
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
+.stage-stack.shot-understanding-stage {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.shot-understanding-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 18px;
+  min-height: 0;
+  height: 100%;
+  align-items: stretch;
+}
+
+.shot-understanding-layout > .shot-review-layout {
+  min-height: 0;
+  height: 100%;
+}
+
 .shot-review-stage > .shot-review-layout {
   min-height: 0;
 }
 
 .shot-understanding-panel {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   min-height: 0;
-  max-height: 200px;
-  overflow-y: auto;
+  height: 100%;
+  align-self: stretch;
+}
+
+.shot-understanding-fields {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+
+.shot-understanding-advice {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.shot-understanding-panel label {
+  gap: 6px;
+}
+
+.shot-understanding-panel input {
+  min-height: 34px;
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shot-understanding-panel textarea {
-  min-height: 64px;
+  min-height: 96px;
+  height: 100%;
+  resize: none;
 }
 
 .shot-understanding-panel .marketing-advice {
-  min-height: 72px;
+  min-height: 96px;
 }
 
 .shot-review-stage .stage-save-bar {
@@ -2745,7 +2791,8 @@ pre {
   .split-actions,
   .regen-toolbar,
   .score-row,
-  .shot-review-layout {
+  .shot-review-layout,
+  .shot-understanding-layout {
     grid-template-columns: 1fr;
   }
 

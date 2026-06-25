@@ -8,17 +8,17 @@
 
 ## 界面预览
 
-| 创建任务 | 图片生成与评估 |
+| 创建任务 | 分镜脚本（分镜导航） |
 |:---:|:---:|
-| ![创建任务](docs/screenshots/01-create-task.png) | ![图片评估](docs/screenshots/02-image-review.png) |
+| ![创建任务](docs/screenshots/01-create-task.png) | ![分镜脚本](docs/screenshots/06-shot-script.png) |
 
-| 重燃抽屉 | 视频生成与评估 |
+| 图片生成与评估 | 视频生成与评估 |
 |:---:|:---:|
-| ![重燃](docs/screenshots/03-regenerate-drawer.png) | ![视频评估](docs/screenshots/04-video-review.png) |
+| ![图片评估](docs/screenshots/02-image-review.png) | ![视频评估](docs/screenshots/04-video-review.png) |
 
-| 完成页 |
-|:---:|
-| ![完成](docs/screenshots/05-completed.png) |
+| 重燃抽屉 | 完成页 |
+|:---:|:---:|
+| ![重燃](docs/screenshots/03-regenerate-drawer.png) | ![完成](docs/screenshots/05-completed.png) |
 
 ---
 
@@ -33,83 +33,142 @@
 
 **核心交互原则**（与当前前端实现一致）：
 
-- **一阶段一主操作**：顶栏主 CTA 为「进入下一步」，阶段内底部保存，不再重复「保存草稿」
-- **先保存再前进**：有未保存修改时点击「进入下一步」会弹出确认（保存并继续 / 放弃 / 取消）
-- **人机协同**：每组分镜支持多候选图片/视频，可开启 AI 评分辅助选片
-- **回顾只读**：点击 Stepper 查看历史节点时为只读，需「返回当前阶段」才能继续编辑
-- **重燃**：右侧抽屉从指定阶段修改输入参数并重跑后续流程；图片/视频重燃表单**仅展示参数**，不展示已生成候选素材
+- **一阶段一主操作**：顶栏主 CTA 为「进入下一步」/「开始生成」，阶段内底部单独保存
+- **先保存再前进**：有未保存修改时点击「进入下一步」弹出确认（保存并继续 / 放弃 / 取消）
+- **人机协同**：每组分镜支持多候选图片/视频；可开启 AI 评分，候选卡片展示分数与依据
+- **Stepper 回顾**：点击已完成节点可只读查看历史内容；顶栏显示「返回当前阶段」
+- **执行中遮罩**：任务 `RUNNING` 时，仅**当前正在执行的阶段**显示遮罩并每 2.5s 自动刷新；回顾已完成节点时不遮罩
+- **重燃**：右侧抽屉从指定阶段修改输入并重跑后续；图片/视频重燃表单**仅编辑参数**，不展示历史候选素材
 
 ---
 
 ## 技术栈
 
-| 层级 | 技术 |
+### 核心框架
+
+| 层级 | 组件 | 版本 |
+|------|------|------|
+| 语言 | Java | 17 |
+| 后端框架 | Spring Boot | 3.3.6 |
+| Web / 校验 | spring-boot-starter-web、spring-boot-starter-validation | 随 Boot 3.3.6 |
+| 持久化 | Spring Data JPA + Hibernate ORM | 6.5.3.Final |
+| 监控 | Spring Boot Actuator | 随 Boot 3.3.6 |
+| 工具库 | Hutool | 5.8.36 |
+| 前端框架 | React + React DOM | 18.3.1 |
+| 构建工具 | Vite + @vitejs/plugin-react | 5.4.21 / 4.7.0 |
+| 语言 | TypeScript | 5.9.3 |
+| 图标 | Lucide React | 0.468.0 |
+| 打包构建 | Node.js / npm（frontend-maven-plugin） | v20.18.1 / 10.8.2 |
+
+### 依赖中间件
+
+| 中间件 | 用途 | 版本 / 说明 |
+|--------|------|-------------|
+| **H2 Database** | 嵌入式任务与上下文持久化 | 2.2.224（文件库 `./data/ad-video-gen.mv.db`） |
+| **S3 兼容对象存储** | 商品图、参考视频、候选素材 URL（MinIO / RustFS 等） | AWS SDK for Java S3 **2.25.27** |
+| **FFmpeg** | 分镜视频拼接、最终成片合成 | 系统二进制（`FFMPEG_BINARY`，默认 `ffmpeg`） |
+| **火山方舟 Ark API** | LLM / 文生图 / 图生视频 | Doubao-Seed-1.6、Seedream 4.5 pro、Seedance 1.0 pro |
+
+> **本地联调兜底**：未配置 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 时，上传接口返回 mock URL；未配置 `ARK_API_KEY` 时，LLM / 生图 / 生视频客户端返回 mock 内容，便于跑通流程。
+
+### AI 模型（火山方舟）
+
+| 能力 | 模型 |
 |------|------|
-| 后端 | Java 17、Spring Boot 3.3、H2、FFmpeg |
-| 前端 | React 18、Vite 5、TypeScript、Lucide Icons |
 | LLM | Doubao-Seed-1.6（理解、Agent 推理） |
 | 图像 | Doubao-Seedream 4.5 pro（文生图 / 参考图生图） |
 | 视频 | Doubao-Seedance 1.0 pro（图文生视频） |
-| 存储 | S3 兼容对象存储（RustFS / MinIO 等） |
 
 ---
 
-## 前端工作台（当前实现）
+## 前端工作台
+
+单页应用入口：`frontend/src/main.tsx`（组件与业务逻辑集中于此），样式：`frontend/src/styles.css`。
 
 ### 布局
 
 - **顶栏**：品牌「AIVision Control」、创建新任务
-- **左侧栏**：最近任务（最多 20 条）、搜索、按状态/流程筛选
-- **主画布**：当前任务阶段内容；顶栏含任务摘要、Stepper、重新生成、进入下一步
+- **左侧栏**：最近任务列表、搜索、按状态 / 工作流筛选
+- **任务页顶栏**：阶段标题、工作流标签、任务状态、任务 ID、待办摘要、重新生成、进入下一步 / 返回当前阶段
+- **摘要条**（`TaskSummaryBar`）：流程位置、规格（平台 / 时长 / 比例）、策略（评分 / 自动确认）
+- **Stepper**：展示工作流节点；当前节点标注「执行中」或「待审核」；已完成节点可点击回顾
 
 ### 创建任务页
 
 - 左侧 **流程说明**（素材输入 → 营销策划 → … → 人工重燃）
-- 中间 **素材与需求**：切换「商品图 / 视频素材」工作流，上传或填写链接
+- 中间 **素材与需求**：切换「商品图 / 视频素材」工作流；上传或填写链接
 - 右侧 **生成配置**：平台、时长、比例、风格标签、候选数量、图片/视频评分、自动确认
-- 未上传素材时「开始生成」禁用并提示
+- 商品图流程需图片；视频素材流程需参考视频；未满足时「开始生成」禁用
 
-### 分镜审核（ShotReviewCard）
+### 营销策划（只读展示）
 
-图片/视频评估阶段采用**按分镜聚合**的单列卡片：
+- 双栏展示 AI 生成的目标人群、卖点、创意策略与配置摘要
+- 修改方案需通过 **重新生成 → 营销策划**
 
-- 每组展示候选网格（图片 `ImageCandidateGrid` / 视频 `VideoCandidateGrid`，各候选独立播放器）
-- 进度条显示「已选 N/M 组」，支持「展开全部」一键展开评分依据与分镜详情
-- 底部 **阶段保存条**（有未保存修改时高亮）：保存分镜 / 保存图片选择 / 保存视频选择
+### 分镜脚本（`ShotEditorLayout`）
+
+- **左侧分镜导航** + **右侧可滚动分镜卡片列表**（`ShotEditorList`）
+- 导航显示各分镜时长；青色高亮当前查看项；滚动右侧列表自动同步导航（scroll-spy）
+- 商品图流程可编辑视觉提示词、运镜/动作、对白；视频素材流程额外支持分镜参考图上传
+- 底部 **保存分镜**（有未保存修改时高亮）
+
+### 图片 / 视频生成与评估（`ShotReviewLayout`）
+
+生成阶段与评估阶段共用 **左侧分镜导航 + 右侧分镜卡片** 布局（`ShotReviewCard`）：
+
+- 导航以青色高亮**当前查看**的分镜（角标显示时长，不区分「已选/待选」）
+- 候选图 / 视频以卡片网格展示（`ImageCandidateGrid` / `VideoCandidateGrid`），点击选中；选中态为青色边框 + 勾选
+- 开启评分时展示分数与依据；支持「展开全部」与分镜参数编辑
+- 视频评估可展开 **分镜详情**，展示已选分镜图与口播上下文
+- 底部保存：**保存图片选择** / **保存视频选择**
+
+> **视频生成阶段**（`VideoGenerateStage`，候选尚未评分时）仍保留上方「分镜参数」编辑区 + 下方 `MediaGrid` 选图区，与评估阶段的 `ShotReviewLayout` 布局不同。
 
 ### 重燃抽屉
 
-- 选择重燃阶段与原因，编辑该阶段真正使用的输入（分镜参数、生成配置等）
-- **图片/视频生成阶段**不展示历史候选素材，仅编辑参数后「应用重燃」
-- 重燃请求会合并分镜字段（未改动的参考图等大字段不会重复上传）
+- 选择重燃阶段与原因，编辑该阶段实际入参
+- 各阶段可提交字段与 `regeneratePayload` 一致（见 API 重燃示例）
+- **图片/视频生成阶段**不展示历史候选，仅改参数与分镜配置
+- 「应用重燃」按钮右对齐，样式与阶段保存条一致
+- 后端会合并分镜大字段（未修改的 `reference` 等不会重复上传），并清空该阶段之后的产物
 
-### 完成页
+### 完成页（`FinalStage`）
 
-- 成片预览、发布文案、话题标签、分享链接、下载高清视频
+- 左右两栏：成片预览（按任务比例 `aspectRatio` 自适应画幅）+ 输出区
+- **发布文案**：不含视频 URL（后端 `ReleaseAgent` 只生成文案；前端 `stripVideoUrls` 二次过滤）
+- **话题标签**、**视频链接**（`CopyButton` 复制）、**下载高清视频**（原生 `<a download>` 链至成片 URL）
+- 本地合成成片通过 `/final-videos/**` 静态映射访问（目录见 `FFMPEG_OUTPUT_DIR`）
+
+### 失败与异常
+
+- 任务 `FAILED` 或存在 `errorMessage` 时展示 `ErrorPanel`，支持从失败阶段重燃或返回当前阶段
 
 ---
 
 ## 后端流程
 
-### 多 Agent
+### Agent 与编排
 
-| Agent | 职责 |
-|-------|------|
-| Market | 目标人群、卖点、创意策略（商品图流程） |
-| Director | 标题、脚本、分镜提示词 |
-| VideoStoryboard | 参考视频分镜理解（视频素材流程） |
-| Evaluate | 候选图片/视频评分与依据 |
-| Multimedia | Seedream 分镜图 → Seedance 分镜视频 |
-| Release | 发布文案、话题、成片链接 |
+| 组件 | 职责 |
+|------|------|
+| `MarketAgent` | 目标人群、卖点、创意策略（商品图流程） |
+| `DirectorAgent` | 标题、分镜脚本与提示词 |
+| `VideoStoryboardAgent` | 参考视频理解与分镜（视频素材流程） |
+| `WorkflowOrchestratorServiceImpl` | 状态机推进、`start`/`advance` 异步执行、图片/视频评分、选片、FFmpeg 合成 |
+| `SeedreamImageClient` | 分镜候选图生成 |
+| `SeedanceVideoClient` | 分镜候选视频生成 |
+| `ReleaseAgent` | 发布标题、文案、话题标签 |
+| `FfmpegComposeService` | 分镜视频拼接为成片 |
+| `S3StorageService` | 素材与成片对象存储 |
 
 提示词位于 `src/main/resources/prompts/`，由 `PromptService` 按 `## PROMPT_XXX` 段落加载。
 
 ### 状态机
 
-后端细粒度阶段在前端 **归并展示**（`canonicalStage`）：
+后端细粒度阶段在前端通过 `canonicalStage` **归并展示**：
 
-| 后端阶段 | 前端 Stepper 展示 |
-|----------|-------------------|
+| 后端阶段 | 前端 Stepper |
+|----------|----------------|
 | `IMAGE_EVALUATING` / `IMAGE_SELECTING` | 图片生成与评估 |
 | `VIDEO_EVALUATING` / `VIDEO_SELECTING` | 视频生成与评估 |
 
@@ -125,9 +184,11 @@
 创建 → 视频理解与分镜 → 图片生成与评估 → 视频生成与评估 → 最终合成 → 完成
 ```
 
-任务状态：`RUNNING`（生成中，画布显示遮罩自动刷新）→ `WAITING_REVIEW`（待人工确认）→ `SUCCESS` / `FAILED`。
+**任务状态**：`CREATED` → `RUNNING`（异步推进单步）→ `WAITING_REVIEW`（待人工确认）→ `SUCCESS` / `FAILED`（亦支持 `CANCELED`）。
 
-默认逐步推进；创建时开启「自动确认」且满足条件时可自动进入下一步。保存分镜/选择或重燃后，会清空受影响的后续产物。
+- `POST .../start` 与 `POST .../advance` 均为**异步**触发一步编排，前端轮询详情直至阶段或状态变化
+- 开启「自动确认」且满足条件时可跳过人审；否则各审核节点需保存后手动「进入下一步」
+- 保存分镜 / 选择或重燃后，会清空受影响的后续产物
 
 ---
 
@@ -160,23 +221,26 @@ cd frontend && npm install && npm run dev
 
 ## 环境变量
 
+以下变量对应 `src/main/resources/application.yml` 中 `ad-video.*` 配置（Spring Boot relaxed binding）：
+
 ```bash
+# 火山方舟（LLM / 生图 / 生视频共用 API Key）
 export ARK_API_KEY=你的方舟APIKey
 export LLM_MODEL=doubao-seed-1-6-250615
 export LLM_ENDPOINT_ID=你的LLM接入点ID
 
 export IMAGE_MODEL=doubao-seedream-4-5-pro
 export CGT_ENDPOINT_ID=你的Seedream接入点ID
-export IMAGE_GENERATION_ENABLED=true
 
 export VIDEO_MODEL=doubao-seedance-1-0-pro
 export T2V_ENDPOINT_ID=你的Seedance接入点ID
-export VIDEO_GENERATION_ENABLED=true
 
+# 成片访问与 FFmpeg
 export PUBLIC_BASE_URL=http://localhost:8080
 export FFMPEG_BINARY=ffmpeg
 export FFMPEG_OUTPUT_DIR=./data/final-videos
 
+# S3 兼容对象存储
 export S3_ENDPOINT=http://127.0.0.1:9000
 export S3_PUBLIC_BASE_URL=http://127.0.0.1:9000
 export S3_ACCESS_KEY=你的AccessKey
@@ -190,28 +254,33 @@ export S3_OBJECT_EXPIRATION_DAYS=7
 
 | 变量 | 说明 |
 |------|------|
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 未配置时上传返回 mock URL，便于本地联调 |
-| `S3_OBJECT_EXPIRATION_DAYS` | `uploads/` 前缀过期天数；`final-videos/` 不过期 |
-| `IMAGE_GENERATION_ENABLED` / `VIDEO_GENERATION_ENABLED` | 关闭时使用本地兜底内容 |
+| `ARK_API_KEY` | 未配置时 Ark 客户端使用 mock 文本/图片/视频，便于无密钥联调 |
+| `LLM_ENDPOINT_ID` / `CGT_ENDPOINT_ID` / `T2V_ENDPOINT_ID` | 方舟接入点 ID；未填时回退为 `model` 字段 |
+| `PUBLIC_BASE_URL` | 短链与 mock 视频 URL 前缀；亦用于 Release 成片链接 |
+| `FFMPEG_OUTPUT_DIR` | 本地成片目录；通过 `/final-videos/**` 提供 HTTP 访问 |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 未配置时上传返回 `mock://local/...` URL |
+| `S3_OBJECT_EXPIRATION_DAYS` | `uploads/` 前缀对象过期天数；`final-videos/` 不过期 |
 
 ---
 
 ## API 概览
 
-基础路径：`/api/video-tasks`
+基础路径：`/api/video-tasks`。统一响应：`{ "code": 0, "message": "success", "data": ... }`。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/api/video-tasks` | 创建任务 |
-| `GET` | `/api/video-tasks` | 任务列表（侧边栏） |
-| `GET` | `/api/video-tasks/{id}` | 任务详情 |
-| `POST` | `/api/video-tasks/{id}/start` | 启动（CREATED → 首阶段） |
-| `POST` | `/api/video-tasks/{id}/advance` | 进入下一步 |
-| `POST` | `/api/video-tasks/{id}/context` | 保存分镜/视频参数编辑 |
-| `POST` | `/api/video-tasks/{id}/select-assets` | 保存图片/视频选择 |
-| `POST` | `/api/video-tasks/{id}/regenerate` | 从指定阶段重燃 |
-| `POST` | `/api/video-tasks/upload-image` | 上传商品图 |
-| `POST` | `/api/video-tasks/upload-video` | 上传参考视频 |
+| `POST` | `/api/video-tasks` | 创建任务（`CreateVideoTaskRequest`） |
+| `GET` | `/api/video-tasks` | 任务列表摘要（侧边栏） |
+| `GET` | `/api/video-tasks/{id}` | 任务详情（`TaskDetailResponse`） |
+| `POST` | `/api/video-tasks/{id}/start` | 启动流程（`CREATED` → 异步执行首步） |
+| `POST` | `/api/video-tasks/{id}/advance` | 推进一步（异步） |
+| `POST` | `/api/video-tasks/{id}/context` | 保存分镜编辑 / 视频阶段图片上下文（`UpdateWorkflowContextRequest`） |
+| `POST` | `/api/video-tasks/{id}/select-assets` | 保存图片/视频选择（`SelectAssetsRequest`） |
+| `POST` | `/api/video-tasks/{id}/regenerate` | 从指定阶段重燃（`RegenerateVideoTaskRequest`） |
+| `POST` | `/api/video-tasks/upload-image` | 上传商品图（`multipart/form-data`，字段 `file`） |
+| `POST` | `/api/video-tasks/upload-video` | 上传参考视频（`multipart/form-data`，字段 `file`） |
+
+静态资源：`GET /final-videos/**` → `FFMPEG_OUTPUT_DIR` 目录下的成片文件。
 
 ### 创建任务（商品图）
 
@@ -235,19 +304,23 @@ curl -X POST http://localhost:8080/api/video-tasks \
   }'
 ```
 
+创建后调用 `POST /api/video-tasks/{taskId}/start` 开始生成。
+
 ### 重燃
 
 ```bash
 curl -X POST http://localhost:8080/api/video-tasks/{taskId}/regenerate \
   -H 'Content-Type: application/json' \
   -d '{
-    "fromStage": "IMAGE_GENERATING",
-    "reason": "调整分镜提示词后重跑",
+    "fromStage": "SHOT_SCRIPT_GENERATING",
+    "reason": "调整创意策略后重跑",
+    "taskInput": { "text": "...", "duration": 15, "aspectRatio": "9:16" },
+    "videoConfig": { "targetAudience": "...", "videoAdvice": "..." },
     "shots": []
   }'
 ```
 
-可选 `fromStage`：`MARKET_PLANNING`（仅商品图）、`SHOT_SCRIPT_GENERATING`、`IMAGE_GENERATING`、`VIDEO_GENERATING`、`FINAL_COMPOSING`。
+`fromStage` 可选：`MARKET_PLANNING`（仅商品图）、`SHOT_SCRIPT_GENERATING`、`IMAGE_GENERATING`、`VIDEO_GENERATING`、`FINAL_COMPOSING`。各阶段可携带字段见前端 `regeneratePayload` 与 `RegenerateVideoTaskRequest`。
 
 ---
 
@@ -310,16 +383,22 @@ docker run -d \
 
 ```text
 ad-video-gen-java/
-├── docs/screenshots/          # README 界面截图
-├── docs/ui-review/            # 交互与 UI 设计文档
-├── frontend/                  # React 工作台（main.tsx 单文件组件）
+├── docs/screenshots/          # README 界面截图（01–06）
+├── frontend/
+│   ├── src/main.tsx           # React 工作台（单文件组件）
+│   └── src/styles.css
 ├── src/main/java/.../advideo/
-│   ├── agent/                 # 各阶段 Agent
-│   ├── client/                # 方舟 API 客户端
-│   ├── orchestrator/          # 工作流编排、重燃、状态机
-│   ├── controller/            # REST API
-│   └── service/               # 存储、FFmpeg、Prompt
-└── src/main/resources/prompts/
+│   ├── agent/                 # Market / Director / VideoStoryboard / Release
+│   ├── client/                # ArkChat / Seedream / Seedance
+│   ├── orchestrator/          # 工作流编排、评分、重燃、状态机
+│   ├── controller/            # REST API（VideoTaskController）
+│   ├── service/               # S3、FFmpeg、Prompt
+│   ├── config/                # WebMvc（CORS、/final-videos）、AdVideoProperties
+│   ├── domain/                # 模型与枚举（TaskStage、Shot 等）
+│   └── entity/ + repository/  # JPA 持久化
+└── src/main/resources/
+    ├── application.yml
+    └── prompts/               # Agent 提示词
 ```
 
 ---

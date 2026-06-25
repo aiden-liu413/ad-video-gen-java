@@ -1241,6 +1241,7 @@ function WorkflowView(props: WorkflowViewProps) {
   const stageTitle = viewStage === "COMPLETED"
     ? finalTitle(task)
     : `${readOnly ? "回顾 · " : ""}${stageText(task.workflowType, viewStage)}`;
+  const showRunningOverlay = task.status === "RUNNING" && !readOnly;
 
   return (
     <div className="workflow-page">
@@ -1289,8 +1290,8 @@ function WorkflowView(props: WorkflowViewProps) {
           onReturnCurrent={returnToCurrentStage}
         />
       )}
-      <section className={`stage-canvas ${task.status === "RUNNING" ? "is-running" : ""}`}>
-        {task.status === "RUNNING" && (
+      <section className={`stage-canvas ${showRunningOverlay ? "is-running" : ""}`}>
+        {showRunningOverlay && (
           <div className="stage-running-overlay" aria-live="polite">
             <Loader2 className="spin" size={28} />
             <strong>正在生成：{stageText(task.workflowType, task.stage)}</strong>
@@ -2017,22 +2018,37 @@ function ShotStage({ task, editableShots, setEditableShots, readOnly, onSaveStag
 }
 
 function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
+  const sourceVideoUrl = task.request?.sourceVideoUrl ?? resolveLegacyVideoUrl(task.request);
+  const materialTitle = task.videoConfig?.productInfo?.name ?? task.request?.sourceVideoFileName ?? "视频素材";
   return (
-    <div className="stage-stack shot-review-stage shot-script-stage">
-      <section className="panel-card shot-understanding-panel">
-        <div className="section-head compact">
-          <h3>视频理解结果</h3>
-          <span>{editableShots.length} 个分镜</span>
-        </div>
-        <label>素材标题<input readOnly value={task.videoConfig?.productInfo?.name ?? task.request?.sourceVideoFileName ?? "视频素材"} /></label>
-        <label>源视频链接<textarea readOnly value={task.request?.sourceVideoUrl ?? resolveLegacyVideoUrl(task.request)} /></label>
-        <label>理解说明<textarea className="marketing-advice" readOnly value={task.videoConfig?.videoAdvice ?? ""} /></label>
-      </section>
-      <ShotEditorLayout shots={editableShots}>
-        <div className="shot-review-list">
-          <ShotEditorList shots={editableShots} readOnly={readOnly} workflowType="video_storyboard_ad" onChange={setEditableShots} />
-        </div>
-      </ShotEditorLayout>
+    <div className="stage-stack shot-review-stage shot-understanding-stage">
+      <div className="shot-understanding-layout">
+        <aside className="panel-card shot-understanding-panel">
+          <div className="section-head compact">
+            <h3>视频理解结果</h3>
+            <span>{editableShots.length} 个分镜</span>
+          </div>
+          <div className="shot-understanding-fields">
+            <label>
+              素材标题
+              <input readOnly value={materialTitle} />
+            </label>
+            <label>
+              源视频链接
+              <input readOnly value={sourceVideoUrl} title={sourceVideoUrl} />
+            </label>
+            <label className="shot-understanding-advice">
+              理解说明
+              <textarea className="marketing-advice" readOnly rows={6} value={task.videoConfig?.videoAdvice ?? ""} />
+            </label>
+          </div>
+        </aside>
+        <ShotEditorLayout shots={editableShots}>
+          <div className="shot-review-list">
+            <ShotEditorList shots={editableShots} readOnly={readOnly} workflowType="video_storyboard_ad" onChange={setEditableShots} />
+          </div>
+        </ShotEditorLayout>
+      </div>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存分镜"} onSave={() => void onSaveStage()} dirty={isDirty} disabled={readOnly} />
       )}
