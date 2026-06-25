@@ -91,12 +91,42 @@ class VideoTaskWorkflowFunctionalTests {
                                 }
                                 """.formatted(images.path("data").path("scoredImageGroups"))))
                 .andExpect(status().isOk());
+        JsonNode imageGroups = images.path("data").path("scoredImageGroups");
+        if (imageGroups.size() >= 2) {
+            JsonNode firstGroup = imageGroups.get(0);
+            JsonNode secondGroup = imageGroups.get(1);
+            mockMvc.perform(post("/api/video-tasks/{taskId}/select-assets", taskId)
+                            .contentType("application/json")
+                            .content("""
+                                    {
+                                      "selectedImages": [
+                                        { "shotId": "%s", "assetId": "%s" },
+                                        { "shotId": "%s", "assetId": "%s" }
+                                      ]
+                                    }
+                                    """.formatted(
+                                    secondGroup.path("shotId").asText(),
+                                    secondGroup.path("images").get(0).path("assetId").asText(),
+                                    firstGroup.path("shotId").asText(),
+                                    firstGroup.path("images").get(0).path("assetId").asText()
+                            )))
+                    .andExpect(status().isOk());
+            JsonNode selectedAfterReverseSubmit = getTask(taskId).path("data").path("selectedImages");
+            assertThat(selectedAfterReverseSubmit.get(0).path("shotId").asText()).isEqualTo(firstGroup.path("shotId").asText());
+            assertThat(selectedAfterReverseSubmit.get(1).path("shotId").asText()).isEqualTo(secondGroup.path("shotId").asText());
+        }
 
         JsonNode videos = advanceAndWait(taskId, "VIDEO_GENERATING");
         assertThat(videos.path("data").path("videoGroups")).hasSizeGreaterThanOrEqualTo(1);
         assertThat(videos.path("data").path("scoredVideoGroups")).hasSizeGreaterThanOrEqualTo(1);
         assertThat(videos.path("data").path("videoGroups").get(0).path("duration").asInt())
                 .isEqualTo(videos.path("data").path("shots").get(0).path("duration").asInt());
+        if (imageGroups.size() >= 2) {
+            assertThat(videos.path("data").path("videoGroups").get(0).path("shotId").asText())
+                    .isEqualTo(imageGroups.get(0).path("shotId").asText());
+            assertThat(videos.path("data").path("videoGroups").get(1).path("shotId").asText())
+                    .isEqualTo(imageGroups.get(1).path("shotId").asText());
+        }
         mockMvc.perform(post("/api/video-tasks/{taskId}/context", taskId)
                         .contentType("application/json")
                         .content("""
@@ -264,6 +294,22 @@ class VideoTaskWorkflowFunctionalTests {
         mockMvc.perform(post("/api/video-tasks/{taskId}/advance", taskId))
                 .andExpect(status().isOk());
         return waitForStage(taskId, expectedStage);
+    }
+
+    /**
+     * 查询任务详情，用于断言人工选择后上下文中的列表顺序。
+     *
+     * @param taskId 待查询的任务 ID
+     * @return 任务详情接口返回的 JSON 响应
+     * @throws Exception 当接口请求失败或响应解析失败时抛出
+     */
+    private JsonNode getTask(String taskId) throws Exception {
+        String response = mockMvc.perform(get("/api/video-tasks/{taskId}", taskId))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        return objectMapper.readTree(response);
     }
 
     /**

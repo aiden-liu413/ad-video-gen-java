@@ -350,12 +350,18 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         }
         if (fromStage.ordinal() >= TaskStage.VIDEO_GENERATING.ordinal()
                 && request.selectedImages() != null) {
-            context.setSelectedImages(request.selectedImages());
+            List<ShotImageGroup> sourceGroups = isEmpty(context.getScoredImageGroups())
+                    ? context.getImageGroups()
+                    : context.getScoredImageGroups();
+            context.setSelectedImages(orderSelectedImages(sourceGroups, request.selectedImages()));
             changed = true;
         }
         if (fromStage.ordinal() >= TaskStage.FINAL_COMPOSING.ordinal()
                 && request.selectedVideos() != null) {
-            context.setSelectedVideos(request.selectedVideos());
+            List<ShotVideoGroup> sourceGroups = isEmpty(context.getScoredVideoGroups())
+                    ? context.getVideoGroups()
+                    : context.getScoredVideoGroups();
+            context.setSelectedVideos(orderSelectedVideos(sourceGroups, request.selectedVideos()));
             changed = true;
         }
         if (changed) {
@@ -452,7 +458,10 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             markWaitingReview(taskId, TaskStage.IMAGE_GENERATING);
         }
         if (request.selectedImages() != null) {
-            context.setSelectedImages(request.selectedImages());
+            List<ShotImageGroup> sourceGroups = isEmpty(context.getScoredImageGroups())
+                    ? context.getImageGroups()
+                    : context.getScoredImageGroups();
+            context.setSelectedImages(orderSelectedImages(sourceGroups, request.selectedImages()));
             context.setVideoGroups(List.of());
             context.setScoredVideoGroups(List.of());
             context.setSelectedVideos(List.of());
@@ -1154,22 +1163,74 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     }
 
     private List<SelectedImage> selectImages(List<ShotImageGroup> groups, List<SelectAssetsRequest.AssetSelection> selections) {
-        return selections.stream()
-                .flatMap(selection -> groups.stream()
-                        .filter(group -> group.shotId().equals(selection.shotId()))
-                        .flatMap(group -> group.images().stream()
-                                .filter(image -> image.assetId().equals(selection.assetId()))
-                                .map(image -> new SelectedImage(group.shotId(), group.duration(), image, group.prompt(), group.action(), group.words()))))
+        Map<String, String> selectedAssetByShot = selections.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        SelectAssetsRequest.AssetSelection::shotId,
+                        SelectAssetsRequest.AssetSelection::assetId,
+                        (first, ignored) -> first
+                ));
+        return groups.stream()
+                .flatMap(group -> group.images().stream()
+                        .filter(image -> image.assetId().equals(selectedAssetByShot.get(group.shotId())))
+                        .map(image -> new SelectedImage(group.shotId(), group.duration(), image, group.prompt(), group.action(), group.words())))
                 .toList();
     }
 
     private List<SelectedVideo> selectVideos(List<ShotVideoGroup> groups, List<SelectAssetsRequest.AssetSelection> selections) {
-        return selections.stream()
-                .flatMap(selection -> groups.stream()
-                        .filter(group -> group.shotId().equals(selection.shotId()))
-                        .flatMap(group -> group.videos().stream()
-                                .filter(video -> video.assetId().equals(selection.assetId()))
-                                .map(video -> new SelectedVideo(group.shotId(), group.duration(), video, group.words(), group.action()))))
+        Map<String, String> selectedAssetByShot = selections.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        SelectAssetsRequest.AssetSelection::shotId,
+                        SelectAssetsRequest.AssetSelection::assetId,
+                        (first, ignored) -> first
+                ));
+        return groups.stream()
+                .flatMap(group -> group.videos().stream()
+                        .filter(video -> video.assetId().equals(selectedAssetByShot.get(group.shotId())))
+                        .map(video -> new SelectedVideo(group.shotId(), group.duration(), video, group.words(), group.action())))
+                .toList();
+    }
+
+    /**
+     * 功能描述：按照图片分镜组顺序重新排列已选图片，避免前端提交顺序影响后续视频生成顺序。
+     * 参数解释：groups 表示当前图片分镜组；selectedImages 表示用户已选择的图片列表。
+     * 返回对象描述：返回按分镜组顺序排列的已选图片列表。
+     * 可能抛出的异常：无。
+     */
+    private List<SelectedImage> orderSelectedImages(List<ShotImageGroup> groups, List<SelectedImage> selectedImages) {
+        if (isEmpty(groups) || isEmpty(selectedImages)) {
+            return selectedImages == null ? List.of() : selectedImages;
+        }
+        Map<String, SelectedImage> selectedByShot = selectedImages.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        SelectedImage::shotId,
+                        selected -> selected,
+                        (first, ignored) -> first
+                ));
+        return groups.stream()
+                .map(group -> selectedByShot.get(group.shotId()))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * 功能描述：按照视频分镜组顺序重新排列已选视频，避免前端提交顺序影响最终合成顺序。
+     * 参数解释：groups 表示当前视频分镜组；selectedVideos 表示用户已选择的视频列表。
+     * 返回对象描述：返回按分镜组顺序排列的已选视频列表。
+     * 可能抛出的异常：无。
+     */
+    private List<SelectedVideo> orderSelectedVideos(List<ShotVideoGroup> groups, List<SelectedVideo> selectedVideos) {
+        if (isEmpty(groups) || isEmpty(selectedVideos)) {
+            return selectedVideos == null ? List.of() : selectedVideos;
+        }
+        Map<String, SelectedVideo> selectedByShot = selectedVideos.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        SelectedVideo::shotId,
+                        selected -> selected,
+                        (first, ignored) -> first
+                ));
+        return groups.stream()
+                .map(group -> selectedByShot.get(group.shotId()))
+                .filter(java.util.Objects::nonNull)
                 .toList();
     }
 

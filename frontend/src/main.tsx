@@ -685,8 +685,8 @@ function App() {
   async function saveSelections() {
     if (!task) return;
     await postAction(`/api/video-tasks/${task.taskId}/select-assets`, "选择已保存", {
-      selectedImages: Object.entries(selectedImages).map(([shotId, assetId]) => ({ shotId, assetId })),
-      selectedVideos: Object.entries(selectedVideos).map(([shotId, assetId]) => ({ shotId, assetId }))
+      selectedImages: sortedSelectionEntries(selectedImages).map(([shotId, assetId]) => ({ shotId, assetId })),
+      selectedVideos: sortedSelectionEntries(selectedVideos).map(([shotId, assetId]) => ({ shotId, assetId }))
     });
   }
 
@@ -816,6 +816,41 @@ function fallbackSelectedVideos(videoGroups: ShotVideoGroup[], scoredVideoGroups
     const [first] = group.videos ?? [];
     return first ? [[group.shotId, first.assetId]] : [];
   }));
+}
+
+/**
+ * 功能描述：比较两个分镜 ID 的自然顺序，保证 shot_2 排在 shot_10 之前。
+ * 参数解释：left 表示左侧分镜 ID；right 表示右侧分镜 ID。
+ * 返回对象描述：返回排序比较值，负数表示 left 在前，正数表示 right 在前。
+ * 可能抛出的异常：无。
+ */
+function compareShotId(left: string, right: string) {
+  const leftNumber = Number(left.match(/(\d+)(?!.*\d)/)?.[1] ?? Number.NaN);
+  const rightNumber = Number(right.match(/(\d+)(?!.*\d)/)?.[1] ?? Number.NaN);
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber !== rightNumber) {
+    return leftNumber - rightNumber;
+  }
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+}
+
+/**
+ * 功能描述：按分镜 ID 自然顺序复制并排序分镜相关对象，避免接口或选择插入顺序影响展示顺序。
+ * 参数解释：items 表示包含 shotId 字段的分镜对象列表。
+ * 返回对象描述：返回新的已排序列表，不修改原始数组。
+ * 可能抛出的异常：无。
+ */
+function sortByShotId<T extends { shotId: string }>(items: T[] = []) {
+  return [...items].sort((left, right) => compareShotId(left.shotId, right.shotId));
+}
+
+/**
+ * 功能描述：按分镜 ID 自然顺序排序选择映射的键值对，保证提交给后端的素材选择顺序稳定。
+ * 参数解释：selected 表示分镜 ID 到素材 ID 的选择映射。
+ * 返回对象描述：返回按分镜 ID 排序后的选择键值对。
+ * 可能抛出的异常：无。
+ */
+function sortedSelectionEntries(selected: Record<string, string>) {
+  return Object.entries(selected).sort(([leftShotId], [rightShotId]) => compareShotId(leftShotId, rightShotId));
 }
 
 function Topbar({
@@ -2232,7 +2267,7 @@ function useShotReviewExpansion(shotIds: string[]) {
  * 可能抛出的异常：无。
  */
 function ImageGenerateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
-  const groups = task.imageGroups ?? [];
+  const groups = sortByShotId(task.imageGroups ?? []);
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
@@ -2279,7 +2314,7 @@ function ImageGenerateStage({ task, editableShots, setEditableShots, selectedIma
  * 可能抛出的异常：无。
  */
 function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
-  const groups = task.scoredImageGroups ?? [];
+  const groups = sortByShotId(task.scoredImageGroups ?? []);
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
@@ -2334,8 +2369,9 @@ function VideoGenerateStage({
   stageSaveLabel,
   isDirty
 }: StageViewProps) {
-  const missingCount = countMissingSelections(task.videoGroups, selectedVideos, "videos");
-  const imageGroups = (task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? [];
+  const videoGroups = sortByShotId(task.videoGroups ?? []);
+  const missingCount = countMissingSelections(videoGroups, selectedVideos, "videos");
+  const imageGroups = sortByShotId((task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? []);
 
   function updateImageGroup(shotId: string, patch: Partial<ShotImageGroup>) {
     if (readOnly) return;
@@ -2397,7 +2433,7 @@ function VideoGenerateStage({
       <section className="panel-card">
         <div className="section-head"><h3>分镜视频候选</h3><span>{missingCount === 0 ? "已完成选择" : `${missingCount} 组待选择`}</span></div>
         <MediaGrid
-          groups={task.videoGroups}
+          groups={videoGroups}
           selected={selectedVideos}
           onSelect={setSelectedVideos}
           type="video"
@@ -2421,8 +2457,8 @@ function VideoGenerateStage({
  * 可能抛出的异常：无。
  */
 function VideoEvaluateStage({ task, selectedImages, selectedVideos, setSelectedVideos, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
-  const groups = task.scoredVideoGroups ?? [];
-  const imageGroups = (task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? [];
+  const groups = sortByShotId(task.scoredVideoGroups ?? []);
+  const imageGroups = sortByShotId((task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? []);
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
   return (
     <div className="stage-stack shot-review-stage">
@@ -2925,7 +2961,7 @@ function regeneratePayload(stage: TaskStage, draft: RegenerateDraft, workflowTyp
 }
 
 function selectedImagesFromDraft(draft: RegenerateDraft, workflowType: WorkflowType = "product_image_ad"): SelectedImage[] {
-  return Object.entries(draft.selectedImages)
+  return sortedSelectionEntries(draft.selectedImages)
     .flatMap(([shotId, assetId]) => {
       const group = draftImageGroups(draft).find((item) => item.shotId === shotId);
       const image = group?.images.find((item) => item.assetId === assetId);
@@ -2946,7 +2982,7 @@ function selectedImagesFromDraft(draft: RegenerateDraft, workflowType: WorkflowT
 }
 
 function selectedVideosFromDraft(draft: RegenerateDraft): SelectedVideo[] {
-  return Object.entries(draft.selectedVideos)
+  return sortedSelectionEntries(draft.selectedVideos)
     .flatMap(([shotId, assetId]) => {
       const group = draftVideoGroups(draft).find((item) => item.shotId === shotId);
       const video = group?.videos.find((item) => item.assetId === assetId);
