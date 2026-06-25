@@ -1144,6 +1144,14 @@ pre {
   margin-bottom: 14px;
 }
 
+.section-head.compact {
+  margin-bottom: 8px;
+}
+
+.section-head h4 {
+  margin: 0;
+}
+
 .section-head span {
   color: #6f8395;
   font-size: 13px;
@@ -2273,6 +2281,13 @@ pre {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: 12px;
+}
+
+.regen-shot-image-picker {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #dce8ef;
 }
 
 .regen-image-pick {

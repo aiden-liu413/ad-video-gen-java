@@ -1614,16 +1614,24 @@ function ShotReferenceField({
   );
 }
 
+/**
+ * 功能描述：渲染可编辑分镜列表，并允许调用方在每个分镜卡片内插入额外内容。
+ * 参数解释：shots 表示分镜列表；readOnly 表示是否只读；workflowType 表示工作流类型；onChange 表示分镜变更回调；renderExtra 表示每个分镜底部的扩展渲染函数。
+ * 返回对象描述：返回分镜编辑卡片列表。
+ * 可能抛出的异常：无。
+ */
 function ShotEditorList({
   shots,
   readOnly,
   workflowType,
-  onChange
+  onChange,
+  renderExtra
 }: {
   shots: Shot[];
   readOnly: boolean;
   workflowType: WorkflowType;
   onChange: (shots: Shot[]) => void;
+  renderExtra?: (shot: Shot) => React.ReactNode;
 }) {
   const promptLabel = workflowType === "video_storyboard_ad" ? "画面总结" : "视觉提示词";
   const actionLabel = workflowType === "video_storyboard_ad" ? "镜头动作" : "运镜 / 动作";
@@ -1663,8 +1671,64 @@ function ShotEditorList({
               onUpload={async (file) => updateShot(shot.shotId, { reference: await fileToJpegDataUrl(file) })}
             />
           )}
+          {renderExtra?.(shot)}
         </article>
       ))}
+    </div>
+  );
+}
+
+/**
+ * 功能描述：渲染重燃视频阶段中单个分镜的候选图选择区域。
+ * 参数解释：group 表示当前分镜的图片候选组；selectedImages 表示当前已选图片映射；onSelect 表示图片选择回调；showScore 表示是否展示评分信息。
+ * 返回对象描述：返回当前分镜内的候选图选择网格；没有候选图时返回提示。
+ * 可能抛出的异常：无。
+ */
+function RegenerateShotImagePicker({
+  group,
+  selectedImages,
+  onSelect,
+  showScore
+}: {
+  group?: ShotImageGroup;
+  selectedImages: Record<string, string>;
+  onSelect: (value: Record<string, string>) => void;
+  showScore: boolean;
+}) {
+  if (!group || group.images.length === 0) {
+    return <p className="regen-hint">当前分镜暂无可选候选图。</p>;
+  }
+  const currentGroup = group;
+
+  function selectImage(assetId: string) {
+    onSelect({ ...selectedImages, [currentGroup.shotId]: assetId });
+  }
+
+  return (
+    <div className="regen-shot-image-picker">
+      <div className="section-head compact">
+        <h4>候选图</h4>
+        <span>{selectedImages[currentGroup.shotId] ? "已选择" : "待选择"}</span>
+      </div>
+      <div className="regen-video-shot-assets">
+        {currentGroup.images.map((image) => {
+          const selected = selectedImages[currentGroup.shotId] === image.assetId;
+          return (
+            <button
+              type="button"
+              className={`regen-image-pick ${selected ? "selected" : ""}`}
+              key={image.assetId}
+              aria-pressed={selected}
+              onClick={() => selectImage(image.assetId)}
+            >
+              {isRenderableImage(image.url) ? <img src={image.url} alt={image.assetId} /> : <div className="mock-media">{image.url}</div>}
+              <span>{image.assetId}</span>
+              {showScore && <MediaScoreMeta score={image.score} reason={image.reason} />}
+              {selected && <em>已选择</em>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1672,11 +1736,17 @@ function ShotEditorList({
 function VideoGenerationShotEditor({
   groups,
   readOnly,
-  onChangeGroup
+  onChangeGroup,
+  selectedImages,
+  onSelectImages,
+  showScore = false
 }: {
   groups: ShotImageGroup[];
   readOnly: boolean;
   onChangeGroup: (shotId: string, patch: Partial<ShotImageGroup>) => void;
+  selectedImages?: Record<string, string>;
+  onSelectImages?: (value: Record<string, string>) => void;
+  showScore?: boolean;
 }) {
   return (
     <div className="regen-video-shot-list">
@@ -1693,6 +1763,14 @@ function VideoGenerationShotEditor({
                 <label>镜头动作<input readOnly={readOnly} value={group.action} onChange={(event) => onChangeGroup(group.shotId, { action: event.target.value })} /></label>
                 <label>口播 / 字幕<textarea readOnly={readOnly} value={group.words} onChange={(event) => onChangeGroup(group.shotId, { words: event.target.value })} /></label>
               </div>
+              {selectedImages && onSelectImages && (
+                <RegenerateShotImagePicker
+                  group={group}
+                  selectedImages={selectedImages}
+                  onSelect={onSelectImages}
+                  showScore={showScore}
+                />
+              )}
             </div>
           </div>
       ))}
@@ -2820,20 +2898,15 @@ function RegenerateControls({
               <label>候选视频数量<input type="number" min={1} max={5} value={regenerateDraft.taskInput.generateVideoCount ?? 1} onChange={(event) => updateTaskInput({ generateVideoCount: Number(event.target.value || 1) })} /></label>
               <label>视频比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
             </div>
-            <p className="regen-hint">可重新选择用于生成分镜视频的候选图；已生成的视频候选不会在此展示。</p>
-            <div className="section-head"><h4>用于生成分镜视频的候选图</h4><span>{draftImageGroups(regenerateDraft).length} 组分镜</span></div>
-            <MediaGrid
-              groups={sortByShotId(draftImageGroups(regenerateDraft))}
-              selected={regenerateDraft.selectedImages}
-              onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })}
-              type="image"
-              showScore={Boolean(regenerateDraft.taskInput.imageScoringEnabled)}
-            />
+            <p className="regen-hint">可在每个分镜内重新选择用于生成分镜视频的候选图；已生成的视频候选不会在此展示。</p>
             {task.workflowType === "video_storyboard_ad" ? (
               <VideoGenerationShotEditor
                 groups={editableImageGroups}
                 readOnly={false}
                 onChangeGroup={updateImageGroup}
+                selectedImages={regenerateDraft.selectedImages}
+                onSelectImages={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })}
+                showScore={Boolean(regenerateDraft.taskInput.imageScoringEnabled)}
               />
             ) : (
               <ShotEditorList
@@ -2841,6 +2914,14 @@ function RegenerateControls({
                 readOnly={false}
                 workflowType="product_image_ad"
                 onChange={setEditableShots}
+                renderExtra={(shot) => (
+                  <RegenerateShotImagePicker
+                    group={draftImageGroups(regenerateDraft).find((group) => group.shotId === shot.shotId)}
+                    selectedImages={regenerateDraft.selectedImages}
+                    onSelect={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })}
+                    showScore={Boolean(regenerateDraft.taskInput.imageScoringEnabled)}
+                  />
+                )}
               />
             )}
           </section>
