@@ -33,17 +33,22 @@ public class VideoStoryboardAgent {
     }
 
     public StoryboardSummary summarize(CreateVideoTaskRequest request) {
+        boolean voiceoverDisabled = request.voiceoverDisabledValue();
+        String voiceoverInstruction = voiceoverDisabled
+                ? "\n重要：本任务已禁用口播/旁白，所有分镜的 words 字段必须输出空字符串，不得生成任何口播、旁白或字幕文案。"
+                : "";
         String userPrompt = """
                 请基于用户提供的视频素材，总结成后续可用于广告重制的分镜脚本。
                 用户补充需求：%s
                 目标平台：%s
                 目标总时长：%s秒
-                输出分镜数量由你判断，但需要能支撑后续广告视频生成。
+                输出分镜数量由你判断，但需要能支撑后续广告视频生成。%s
                 请严格遵守系统提示词中的 JSON 输出格式。
                 """.formatted(
                 valueOrDefault(request.text(), "未提供"),
                 valueOrDefault(request.platform(), "抖音"),
-                request.durationValue()
+                request.durationValue(),
+                voiceoverInstruction
         );
 
         String resolvedVideoUrl = MediaResourceUtils.resolveVideoUrl(request.sourceVideoUrl(), request.sourceVideoFileId());
@@ -62,8 +67,12 @@ public class VideoStoryboardAgent {
                 userPrompt,
                 List.of(mediaInput)
         );
-        return parseStoryboard(response, request.durationValue())
+        StoryboardSummary summary = parseStoryboard(response, request.durationValue())
                 .orElseGet(() -> fallbackSummary(request.durationValue(), valueOrDefault(request.sourceVideoFileName(), "视频素材分镜")));
+        if (voiceoverDisabled) {
+            return new StoryboardSummary(summary.title(), clearShotWords(summary.shots()), summary.rawScript());
+        }
+        return summary;
     }
 
     private Optional<StoryboardSummary> parseStoryboard(String response, int totalDuration) {
@@ -173,6 +182,22 @@ public class VideoStoryboardAgent {
 
     private String valueOrDefault(String value, String fallback) {
         return StringUtils.hasText(value) ? value : fallback;
+    }
+
+    private List<Shot> clearShotWords(List<Shot> shots) {
+        return shots.stream()
+                .map(shot -> new Shot(
+                        shot.shotId(),
+                        shot.orderNo(),
+                        shot.duration(),
+                        shot.prompt(),
+                        shot.action(),
+                        "",
+                        shot.reference(),
+                        shot.camera(),
+                        shot.sceneType()
+                ))
+                .toList();
     }
 
     public record StoryboardSummary(String title, List<Shot> shots, String rawScript) {

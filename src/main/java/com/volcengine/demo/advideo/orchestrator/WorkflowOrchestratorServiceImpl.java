@@ -180,7 +180,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 VideoStoryboardAgent.StoryboardSummary summary = videoStoryboardAgent.summarize(request);
                 context.setSourceStoryboardTitle(summary.title());
                 context.setVideoConfig(generateVideoConfigForVideoStoryboard(request, summary));
-                context.setShots(summary.shots());
+                context.setShots(applyVoiceoverPolicy(request, summary.shots()));
                 saveContext(context);
                 if (shouldPauseForReview(request, TaskStage.SHOT_SCRIPT_GENERATING, false)) {
                     markWaitingReview(taskId, TaskStage.SHOT_SCRIPT_GENERATING);
@@ -407,6 +407,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 patch.imageScoringEnabled() == null ? current.imageScoringEnabled() : patch.imageScoringEnabled(),
                 patch.videoScoringEnabled() == null ? current.videoScoringEnabled() : patch.videoScoringEnabled(),
                 patch.autoConfirmEnabled() == null ? current.autoConfirmEnabled() : patch.autoConfirmEnabled(),
+                patch.voiceoverDisabled() == null ? current.voiceoverDisabled() : patch.voiceoverDisabled(),
                 patch.generateImageCount() == null ? current.generateImageCount() : patch.generateImageCount(),
                 patch.generateVideoCount() == null ? current.generateVideoCount() : patch.generateVideoCount()
         );
@@ -574,7 +575,30 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         "product_showcase"
                 ))
                 .toList();
-        return normalizeShotDurations(shots, config.duration());
+        return applyVoiceoverPolicy(request, normalizeShotDurations(shots, config.duration()));
+    }
+
+    private List<Shot> applyVoiceoverPolicy(CreateVideoTaskRequest request, List<Shot> shots) {
+        if (!request.voiceoverDisabledValue()) {
+            return shots;
+        }
+        return clearShotWords(shots);
+    }
+
+    private List<Shot> clearShotWords(List<Shot> shots) {
+        return shots.stream()
+                .map(shot -> new Shot(
+                        shot.shotId(),
+                        shot.orderNo(),
+                        shot.duration(),
+                        shot.prompt(),
+                        shot.action(),
+                        "",
+                        shot.reference(),
+                        shot.camera(),
+                        shot.sceneType()
+                ))
+                .toList();
     }
 
     private List<Shot> normalizeShotDurations(List<Shot> shots, Integer totalDuration) {
@@ -642,7 +666,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         int totalImageCount = shots.size() * imageCountPerShot;
         log.info("Generate image groups with one Seedream request, shotCount={}, imageCountPerShot={}, totalImageCount={}",
                 shots.size(), imageCountPerShot, totalImageCount);
-        String prompt = buildBatchImagePrompt(config, shots, imageCountPerShot);
+        String prompt = buildBatchImagePrompt(config, shots, imageCountPerShot, request.voiceoverDisabledValue());
         List<String> urls = imageClient.generateImages(prompt, config.productInfo().resources(), totalImageCount);
         List<ShotImageGroup> groups = new ArrayList<>();
         int cursor = 0;
@@ -672,13 +696,22 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         int imageCountPerShot = request.imageCount();
         log.info("Generate image groups per shot, shotCount={}, imageCountPerShot={}", shots.size(), imageCountPerShot);
         return awaitAll(shots.stream()
-                .map(shot -> CompletableFuture.supplyAsync(() -> generateImageGroupForShot(config, shot, imageCountPerShot)))
+                .map(shot -> CompletableFuture.supplyAsync(() -> generateImageGroupForShot(request, config, shot, imageCountPerShot)))
                 .toList());
     }
 
-    private ShotImageGroup generateImageGroupForShot(VideoConfig config, Shot shot, int imageCountPerShot) {
+    private ShotImageGroup generateImageGroupForShot(
+            CreateVideoTaskRequest request,
+            VideoConfig config,
+            Shot shot,
+            int imageCountPerShot
+    ) {
         List<String> references = shotReferenceUrls(shot);
-        List<String> urls = imageClient.generateImages(buildSingleShotImagePrompt(config, shot, imageCountPerShot), references, imageCountPerShot);
+        List<String> urls = imageClient.generateImages(
+                buildSingleShotImagePrompt(config, shot, imageCountPerShot, request.voiceoverDisabledValue()),
+                references,
+                imageCountPerShot
+        );
         List<ImageCandidate> images = new ArrayList<>();
         for (int index = 1; index <= imageCountPerShot; index++) {
             String url = index - 1 < urls.size()
@@ -697,7 +730,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         return new ShotImageGroup(shot.shotId(), shot.duration(), shot.prompt(), shot.action(), shot.words(), shot.reference(), images);
     }
 
-    private String buildSingleShotImagePrompt(VideoConfig config, Shot shot, int imageCountPerShot) {
+    private String buildSingleShotImagePrompt(VideoConfig config, Shot shot, int imageCountPerShot, boolean voiceoverDisabled) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("请仅围绕分镜 ").append(shot.shotId()).append(" 生成 ").append(imageCountPerShot).append(" 张候选广告图片。");
         prompt.append("这").append(imageCountPerShot).append("张图必须全部属于同一个分镜，严禁混入其他分镜的场景、动作、结果或商品状态。");
@@ -707,7 +740,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         prompt.append("分镜ID：").append(shot.shotId()).append("\n");
         prompt.append("画面总结：").append(shot.prompt()).append("\n");
         prompt.append("镜头动作：").append(shot.action()).append("\n");
-        prompt.append("口播/字幕：").append(shot.words()).append("\n");
+        appendVoiceoverPromptLine(prompt, shot.words(), voiceoverDisabled);
         return prompt.toString();
     }
 
@@ -725,7 +758,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 .toList();
     }
 
-    private String buildBatchImagePrompt(VideoConfig config, List<Shot> shots, int imageCountPerShot) {
+    private String buildBatchImagePrompt(VideoConfig config, List<Shot> shots, int imageCountPerShot, boolean voiceoverDisabled) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("请一次性生成").append(shots.size() * imageCountPerShot).append("张广告候选图片。");
         prompt.append("必须严格按照以下分镜 ID 顺序返回结果，不允许调整顺序。");
@@ -750,7 +783,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
             prompt.append("\n分镜 ").append(shot.shotId()).append("：\n");
             prompt.append("视觉提示词：").append(shot.prompt()).append("\n");
             prompt.append("动作/镜头：").append(shot.action()).append("\n");
-            prompt.append("口播/字幕：").append(shot.words()).append("\n");
+            appendVoiceoverPromptLine(prompt, shot.words(), voiceoverDisabled);
             prompt.append("当前分镜必须连续输出 ").append(imageCountPerShot).append(" 张，仅对应 ").append(shot.shotId()).append("。\n");
         }
         return prompt.toString();
@@ -847,7 +880,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
 
     private ShotVideoGroup generateVideoGroup(CreateVideoTaskRequest request, VideoConfig config, SelectedImage selectedImage) {
         List<VideoCandidate> videos = awaitAll(java.util.stream.IntStream.rangeClosed(1, request.videoCount())
-                .mapToObj(index -> CompletableFuture.supplyAsync(() -> generateVideoCandidate(config, selectedImage, index)))
+                .mapToObj(index -> CompletableFuture.supplyAsync(() -> generateVideoCandidate(request, config, selectedImage, index)))
                 .toList());
         return new ShotVideoGroup(
                 selectedImage.shotId(),
@@ -860,17 +893,27 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
         );
     }
 
-    private VideoCandidate generateVideoCandidate(VideoConfig config, SelectedImage selectedImage, int index) {
+    private VideoCandidate generateVideoCandidate(
+            CreateVideoTaskRequest request,
+            VideoConfig config,
+            SelectedImage selectedImage,
+            int index
+    ) {
         int durationSeconds = positiveOrDefault(selectedImage.duration(), config.duration());
-        String prompt = selectedImage.prompt()
-                + "\n动作：" + selectedImage.action()
-                + "\n口播：" + selectedImage.words()
-                + "\n时长：" + durationSeconds + "秒"
-                + "\n无水印，比例" + config.aspectRatio();
+        StringBuilder prompt = new StringBuilder()
+                .append(selectedImage.prompt())
+                .append("\n动作：").append(selectedImage.action());
+        if (request.voiceoverDisabledValue()) {
+            prompt.append("\n本任务禁用口播/旁白，视频中不出现口播、旁白或字幕。");
+        } else if (StringUtils.hasText(selectedImage.words())) {
+            prompt.append("\n口播/旁白：").append(selectedImage.words());
+        }
+        prompt.append("\n时长：").append(durationSeconds).append("秒")
+                .append("\n无水印，比例").append(config.aspectRatio());
         SeedanceVideoClient.VideoGeneration generation = videoClient.generateVideo(
                 config.productInfo().name(),
                 List.of(selectedImage.image().url()),
-                prompt,
+                prompt.toString(),
                 durationSeconds,
                 config.aspectRatio()
         );
@@ -947,10 +990,18 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                         分镜 ID：%s
                         视觉提示词：%s
                         动作/镜头：%s
-                        口播/字幕：%s
+                        口播/旁白：%s
                         素材 ID：%s
                         素材 URL：%s
-                        """.formatted(assetTypeLabel(assetType), shotId, prompt, action, words, assetId, summarizeAssetUrl(assetUrl)),
+                        """.formatted(
+                        assetTypeLabel(assetType),
+                        shotId,
+                        prompt,
+                        action,
+                        voiceoverDisabledValue(words),
+                        assetId,
+                        summarizeAssetUrl(assetUrl)
+                ),
                 "image".equals(assetType) && StringUtils.hasText(assetUrl) ? List.of(assetUrl) : List.of()
         );
         return parseEvaluation(response, fallbackScore, fallbackReason);
@@ -990,6 +1041,18 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
 
     private String assetTypeLabel(String assetType) {
         return "video".equals(assetType) ? "视频" : "图片";
+    }
+
+    private void appendVoiceoverPromptLine(StringBuilder prompt, String words, boolean voiceoverDisabled) {
+        if (voiceoverDisabled) {
+            prompt.append("口播/旁白：无（本任务禁用口播/旁白，画面中不出现字幕或口播文案）\n");
+            return;
+        }
+        prompt.append("口播/旁白：").append(words).append("\n");
+    }
+
+    private String voiceoverDisabledValue(String words) {
+        return StringUtils.hasText(words) ? words : "无";
     }
 
     private String summarizeAssetUrl(String assetUrl) {
@@ -1323,6 +1386,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 false,
                 false,
                 false,
+                false,
                 2,
                 1
         );
@@ -1349,6 +1413,7 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
                 null,
                 request.style(),
                 String.valueOf(request.durationValue()),
+                request.voiceoverDisabled(),
                 resources.imageUrls(),
                 resources.legacyFileIds()
         );

@@ -21,6 +21,7 @@ public record CreateVideoTaskRequest(
         Boolean imageScoringEnabled,
         Boolean videoScoringEnabled,
         Boolean autoConfirmEnabled,
+        Boolean voiceoverDisabled,
         Integer generateImageCount,
         Integer generateVideoCount
 ) {
@@ -54,5 +55,9 @@ public record CreateVideoTaskRequest(
 
     public boolean autoConfirmEnabledValue() {
         return Boolean.TRUE.equals(autoConfirmEnabled);
+    }
+
+    public boolean voiceoverDisabledValue() {
+        return Boolean.TRUE.equals(voiceoverDisabled);
     }
 }

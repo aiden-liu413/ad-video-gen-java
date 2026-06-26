@@ -40,6 +40,10 @@ public class DirectorAgent {
                 : StringUtils.hasText(insight.productName()) ? insight.productName() : "广告商品";
         String targetPlatform = StringUtils.hasText(platform) ? platform : "通用短视频平台";
         String platformAdvice = platformAdvice(targetPlatform);
+        boolean voiceoverDisabled = request.voiceoverDisabledValue();
+        String voiceoverInstruction = voiceoverDisabled
+                ? "\n重要：本任务已禁用口播/旁白，所有分镜的 words 字段必须输出空字符串，不得生成任何口播、旁白或字幕文案。"
+                : "";
         String script = chatClient.complete(
                 promptService.directorStoryboardAgent(),
                 """
@@ -52,7 +56,7 @@ public class DirectorAgent {
                         风格：%s
                         目标人群：%s
                         核心卖点：%s
-                        市场策略：%s
+                        市场策略：%s%s
                         请严格遵守系统提示词中的 JSON 输出格式。
                         """.formatted(
                         productName,
@@ -63,13 +67,17 @@ public class DirectorAgent {
                         style,
                         insight.targetAudience(),
                         String.join("、", insight.valuePropositions()),
-                        insight.creativeStrategy()
+                        insight.creativeStrategy(),
+                        voiceoverInstruction
                 )
         );
 
         Optional<ParsedStoryboard> parsedStoryboard = parseStoryboard(script);
         List<Scene> scenes = parsedStoryboard.map(ParsedStoryboard::scenes)
-                .orElseGet(() -> defaultScenes(style, productName, platformAdvice));
+                .orElseGet(() -> defaultScenes(style, productName, platformAdvice, voiceoverDisabled));
+        if (voiceoverDisabled) {
+            scenes = clearSceneWords(scenes);
+        }
         String title = parsedStoryboard.map(ParsedStoryboard::title)
                 .filter(StringUtils::hasText)
                 .orElse(productName + " 场景化广告");
@@ -126,24 +134,30 @@ public class DirectorAgent {
         return candidates;
     }
 
-    private List<Scene> defaultScenes(String style, String productName, String platformAdvice) {
+    private List<Scene> defaultScenes(String style, String productName, String platformAdvice, boolean voiceoverDisabled) {
         return List.of(
                 new Scene(1,
                         style + "，" + platformAdvice + "，用户遇到典型痛点，镜头聚焦真实生活/工作场景",
                         "你是否也遇到过这样的麻烦？",
-                        "痛点出现",
+                        voiceoverDisabled ? "" : "痛点出现",
                         4),
                 new Scene(2,
                         style + "，" + platformAdvice + "，产品以清晰特写出现，展示核心功能和使用动作",
                         productName + "，让复杂问题变简单。",
-                        "核心卖点",
+                        voiceoverDisabled ? "" : "核心卖点",
                         6),
                 new Scene(3,
                         style + "，" + platformAdvice + "，用户获得结果，画面给出购买或咨询引导",
                         "现在体验，开启更高效的一天。",
-                        "立即了解",
+                        voiceoverDisabled ? "" : "立即了解",
                         5)
         );
+    }
+
+    private List<Scene> clearSceneWords(List<Scene> scenes) {
+        return scenes.stream()
+                .map(scene -> new Scene(scene.index(), scene.visualPrompt(), scene.narration(), "", scene.seconds()))
+                .toList();
     }
 
     private String platformAdvice(String platform) {

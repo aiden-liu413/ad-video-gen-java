@@ -8,17 +8,47 @@
 
 ## 界面预览
 
-| 创建任务 | 分镜脚本（分镜导航） |
+| 创建任务（商品图） | 创建任务（视频素材） |
 |:---:|:---:|
-| ![创建任务](docs/screenshots/01-create-task.png) | ![分镜脚本](docs/screenshots/06-shot-script.png) |
+| ![创建任务](docs/screenshots/01-create-task.png) | ![创建视频任务](docs/screenshots/02-create-video-task.png) |
+
+| 营销策划 | 分镜脚本 |
+|:---:|:---:|
+| ![营销策划](docs/screenshots/03-marketing-planning.png) | ![分镜脚本](docs/screenshots/04-shot-script.png) |
+
+| 视频理解与分镜 | 图片生成与评估 |
+|:---:|:---:|
+| ![视频理解](docs/screenshots/05-video-understanding.png) | ![图片评估](docs/screenshots/06-image-review.png) |
+
+| 视频生成与评估 | 完成页 |
+|:---:|:---:|
+| ![视频评估](docs/screenshots/07-video-review.png) | ![完成](docs/screenshots/09-completed.png) |
+
+### 重燃抽屉（各阶段表单）
+
+**商品图流程**（5 个可重燃节点）：
+
+| 营销策划 | 分镜脚本 |
+|:---:|:---:|
+| ![营销策划重燃](docs/screenshots/regenerate/product-marketing.png) | ![分镜脚本重燃](docs/screenshots/regenerate/product-shot-script.png) |
 
 | 图片生成与评估 | 视频生成与评估 |
 |:---:|:---:|
-| ![图片评估](docs/screenshots/02-image-review.png) | ![视频评估](docs/screenshots/04-video-review.png) |
+| ![图片重燃](docs/screenshots/regenerate/product-image.png) | ![视频重燃](docs/screenshots/regenerate/product-video.png) |
 
-| 重燃抽屉 | 完成页 |
+| 最终合成 | |
 |:---:|:---:|
-| ![重燃](docs/screenshots/03-regenerate-drawer.png) | ![完成](docs/screenshots/05-completed.png) |
+| ![合成重燃](docs/screenshots/regenerate/product-final.png) | |
+
+**视频素材流程**（4 个可重燃节点，无营销策划）：
+
+| 视频理解与分镜 | 图片生成与评估 |
+|:---:|:---:|
+| ![理解重燃](docs/screenshots/regenerate/video-understanding.png) | ![图片重燃](docs/screenshots/regenerate/video-image.png) |
+
+| 视频生成与评估 | 最终合成 |
+|:---:|:---:|
+| ![视频重燃](docs/screenshots/regenerate/video-video.png) | ![合成重燃](docs/screenshots/regenerate/video-final.png) |
 
 ---
 
@@ -31,7 +61,7 @@
 | **商品图生成广告** | `product_image_ad` | 商品图 + 文字需求 | 含营销策划 → 分镜脚本 → 图片/视频候选 → 合成 |
 | **视频素材拆解重制** | `video_storyboard_ad` | 参考视频 + 文字需求 | 跳过营销策划，先做视频理解与分镜，再进入图片/视频生成 |
 
-**核心交互原则**（与当前前端实现一致）：
+**核心交互原则**
 
 - **一阶段一主操作**：顶栏主 CTA 为「进入下一步」/「开始生成」，阶段内底部单独保存
 - **先保存再前进**：有未保存修改时点击「进入下一步」弹出确认（保存并继续 / 放弃 / 取消）
@@ -83,65 +113,19 @@
 
 ## 前端工作台
 
-单页应用入口：`frontend/src/main.tsx`（组件与业务逻辑集中于此），样式：`frontend/src/styles.css`。
+单页应用（`frontend/src/main.tsx` + `frontend/src/styles.css`）：左侧任务栏 + 顶栏 Stepper + 阶段画布。代码集中在 `main.tsx` 单文件。
 
-### 布局
+| 阶段 | 布局要点 |
+|------|----------|
+| **创建** | 流程说明 + 素材/需求 + 生成配置；切换商品图 / 视频素材工作流 |
+| **营销策划** | 只读双栏（AI 方案 + 配置摘要）；仅商品图流程 |
+| **分镜脚本** | 左侧分镜导航 + 右侧分镜卡片（scroll-spy，青色高亮当前项） |
+| **视频理解与分镜** | 左侧理解结果 + 右侧分镜导航与详情（视频素材流程） |
+| **图片/视频评估** | 左侧分镜导航 + 右侧候选卡片网格；选中态青色边框 |
+| **重燃抽屉** | 下拉选阶段；各节点仅展示该阶段可改入参（见下方截图）；图片/视频节点不展示历史候选，视频节点可选候选图 |
+| **完成** | 成片预览 + 发布文案 / 话题 / 下载链接 |
 
-- **顶栏**：品牌「AIVision Control」、创建新任务
-- **左侧栏**：最近任务列表、搜索、按状态 / 工作流筛选
-- **任务页顶栏**：阶段标题、工作流标签、任务状态、任务 ID、待办摘要、重新生成、进入下一步 / 返回当前阶段
-- **摘要条**（`TaskSummaryBar`）：流程位置、规格（平台 / 时长 / 比例）、策略（评分 / 自动确认）
-- **Stepper**：展示工作流节点；当前节点标注「执行中」或「待审核」；已完成节点可点击回顾
-
-### 创建任务页
-
-- 左侧 **流程说明**（素材输入 → 营销策划 → … → 人工重燃）
-- 中间 **素材与需求**：切换「商品图 / 视频素材」工作流；上传或填写链接
-- 右侧 **生成配置**：平台、时长、比例、风格标签、候选数量、图片/视频评分、自动确认
-- 商品图流程需图片；视频素材流程需参考视频；未满足时「开始生成」禁用
-
-### 营销策划（只读展示）
-
-- 双栏展示 AI 生成的目标人群、卖点、创意策略与配置摘要
-- 修改方案需通过 **重新生成 → 营销策划**
-
-### 分镜脚本（`ShotEditorLayout`）
-
-- **左侧分镜导航** + **右侧可滚动分镜卡片列表**（`ShotEditorList`）
-- 导航显示各分镜时长；青色高亮当前查看项；滚动右侧列表自动同步导航（scroll-spy）
-- 商品图流程可编辑视觉提示词、运镜/动作、对白；视频素材流程额外支持分镜参考图上传
-- 底部 **保存分镜**（有未保存修改时高亮）
-
-### 图片 / 视频生成与评估（`ShotReviewLayout`）
-
-生成阶段与评估阶段共用 **左侧分镜导航 + 右侧分镜卡片** 布局（`ShotReviewCard`）：
-
-- 导航以青色高亮**当前查看**的分镜（角标显示时长，不区分「已选/待选」）
-- 候选图 / 视频以卡片网格展示（`ImageCandidateGrid` / `VideoCandidateGrid`），点击选中；选中态为青色边框 + 勾选
-- 开启评分时展示分数与依据；支持「展开全部」与分镜参数编辑
-- 视频评估可展开 **分镜详情**，展示已选分镜图与口播上下文
-- 底部保存：**保存图片选择** / **保存视频选择**
-
-> **视频生成阶段**（`VideoGenerateStage`，候选尚未评分时）仍保留上方「分镜参数」编辑区 + 下方 `MediaGrid` 选图区，与评估阶段的 `ShotReviewLayout` 布局不同。
-
-### 重燃抽屉
-
-- 选择重燃阶段与原因，编辑该阶段实际入参
-- 各阶段可提交字段与 `regeneratePayload` 一致（见 API 重燃示例）
-- **图片/视频生成阶段**不展示历史候选，仅改参数与分镜配置
-- 「应用重燃」按钮右对齐，样式与阶段保存条一致
-- 后端会合并分镜大字段（未修改的 `reference` 等不会重复上传），并清空该阶段之后的产物
-
-### 完成页（`FinalStage`）
-
-- 左右两栏：成片预览（按任务比例 `aspectRatio` 自适应画幅）+ 输出区
-- **发布文案**：不含视频 URL（后端 `ReleaseAgent` 只生成文案；前端 `stripVideoUrls` 二次过滤）
-- **话题标签**、**视频链接**（`CopyButton` 复制）、**下载高清视频**（原生 `<a download>` 链至成片 URL）
-- 本地合成成片通过 `/final-videos/**` 静态映射访问（目录见 `FFMPEG_OUTPUT_DIR`）
-
-### 失败与异常
-
-- 任务 `FAILED` 或存在 `errorMessage` 时展示 `ErrorPanel`，支持从失败阶段重燃或返回当前阶段
+**核心交互**：Stepper 回顾已完成节点（只读）；`RUNNING` 时仅当前阶段显示遮罩；有未保存修改时「进入下一步」弹确认；重燃从指定阶段重跑并清空后续产物；失败时 `ErrorPanel` 支持重燃或返回当前阶段。
 
 ---
 
@@ -383,7 +367,8 @@ docker run -d \
 
 ```text
 ad-video-gen-java/
-├── docs/screenshots/          # README 界面截图（01–06）
+├── docs/screenshots/          # README 界面截图（01–09 + regenerate/）
+│   └── regenerate/            # 重燃抽屉各阶段表单
 ├── frontend/
 │   ├── src/main.tsx           # React 工作台（单文件组件）
 │   └── src/styles.css

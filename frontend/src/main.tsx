@@ -154,6 +154,7 @@ type TaskRequest = {
   imageScoringEnabled?: boolean;
   videoScoringEnabled?: boolean;
   autoConfirmEnabled?: boolean;
+  voiceoverDisabled?: boolean;
   generateImageCount?: number;
   generateVideoCount?: number;
 };
@@ -223,6 +224,7 @@ type FormState = {
   imageScoringEnabled: boolean;
   videoScoringEnabled: boolean;
   autoConfirmEnabled: boolean;
+  voiceoverDisabled: boolean;
   generateImageCount: string;
   generateVideoCount: string;
 };
@@ -288,6 +290,7 @@ const initialForm: FormState = {
   imageScoringEnabled: false,
   videoScoringEnabled: false,
   autoConfirmEnabled: false,
+  voiceoverDisabled: false,
   generateImageCount: "4",
   generateVideoCount: "2"
 };
@@ -304,6 +307,13 @@ const aspectRatioOptions = [
 ];
 
 const durationOptions = ["5", "10", "15"];
+
+const WORDS_FIELD_LABEL = "口播 / 旁白";
+
+const voiceoverOptions = [
+  { value: false, label: "使用口播/旁白" },
+  { value: true, label: "禁用口播/旁白" }
+] as const;
 
 const platformOptions = [
   { value: "douyin", label: "抖音", icon: <Music2 size={18} /> },
@@ -339,6 +349,7 @@ const emptyRegenerateDraft: RegenerateDraft = {
     imageScoringEnabled: false,
     videoScoringEnabled: false,
     autoConfirmEnabled: false,
+    voiceoverDisabled: false,
     generateImageCount: 4,
     generateVideoCount: 2
   },
@@ -546,6 +557,7 @@ function App() {
           imageScoringEnabled: form.imageScoringEnabled,
           videoScoringEnabled: form.videoScoringEnabled,
           autoConfirmEnabled: form.autoConfirmEnabled,
+          voiceoverDisabled: form.voiceoverDisabled,
           generateImageCount: Number(form.generateImageCount || 4),
           generateVideoCount: Number(form.generateVideoCount || 2)
         })
@@ -1160,6 +1172,26 @@ function CreateTaskView({
           </div>
           <input value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="自定义风格描述" />
         </div>
+        <div className="config-section">
+          <span className="field-label">口播 / 旁白（单选）</span>
+          <div className="preset-row voiceover-options">
+            {voiceoverOptions.map((option) => (
+              <button
+                type="button"
+                key={option.label}
+                className={form.voiceoverDisabled === option.value ? "active" : ""}
+                onClick={() => setForm((previous) => ({ ...previous, voiceoverDisabled: option.value }))}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <small className="field-helper">
+            {form.voiceoverDisabled
+              ? "选中后，分镜脚本、图片与视频生成均不使用口播/旁白"
+              : "默认保留口播/旁白，可在分镜脚本中编辑"}
+          </small>
+        </div>
         <div className="summary-flags">
           <label className="summary-flag-toggle">
             <span>图片评分</span>
@@ -1324,6 +1356,7 @@ function WorkflowView(props: WorkflowViewProps) {
  */
 function TaskSummaryBar({ task, viewingStage, readOnly }: { task: TaskDetail; viewingStage: TaskStage; readOnly: boolean }) {
   const flags = [
+    task.request?.voiceoverDisabled ? "禁用口播/旁白" : "",
     task.request?.imageScoringEnabled ? "图片评分" : "",
     task.request?.videoScoringEnabled ? "视频评分" : "",
     task.request?.autoConfirmEnabled ? "自动确认" : ""
@@ -1669,19 +1702,20 @@ function ShotEditorList({
   shots,
   readOnly,
   workflowType,
+  voiceoverDisabled = false,
   onChange,
   renderExtra
 }: {
   shots: Shot[];
   readOnly: boolean;
   workflowType: WorkflowType;
+  voiceoverDisabled?: boolean;
   onChange: (shots: Shot[]) => void;
   renderExtra?: (shot: Shot) => React.ReactNode;
 }) {
   const activeShotId = useShotScriptNav();
   const promptLabel = workflowType === "video_storyboard_ad" ? "画面总结" : "视觉提示词";
   const actionLabel = workflowType === "video_storyboard_ad" ? "镜头动作" : "运镜 / 动作";
-  const wordsLabel = workflowType === "video_storyboard_ad" ? "口播 / 字幕" : "对白 / 旁白";
 
   function updateShot(shotId: string, patch: Partial<Shot>) {
     if (readOnly) return;
@@ -1712,7 +1746,10 @@ function ShotEditorList({
           </header>
           <label>{promptLabel}<textarea readOnly={readOnly} value={shot.prompt ?? ""} onChange={(event) => updateShot(shot.shotId, { prompt: event.target.value })} /></label>
           <label>{actionLabel}<input readOnly={readOnly} value={shot.action ?? ""} onChange={(event) => updateShot(shot.shotId, { action: event.target.value })} /></label>
-          <label>{wordsLabel}<textarea readOnly={readOnly} value={shot.words ?? ""} onChange={(event) => updateShot(shot.shotId, { words: event.target.value })} /></label>
+          {!voiceoverDisabled && (
+            <label>{WORDS_FIELD_LABEL}<textarea readOnly={readOnly} value={shot.words ?? ""} onChange={(event) => updateShot(shot.shotId, { words: event.target.value })} /></label>
+          )}
+          {voiceoverDisabled && <p className="field-helper">本任务已禁用口播/旁白</p>}
           {workflowType === "video_storyboard_ad" && (
             <ShotReferenceField
               shotId={shot.shotId}
@@ -1786,6 +1823,7 @@ function RegenerateShotImagePicker({
 function VideoGenerationShotEditor({
   groups,
   readOnly,
+  voiceoverDisabled = false,
   onChangeGroup,
   selectedImages,
   onSelectImages,
@@ -1793,6 +1831,7 @@ function VideoGenerationShotEditor({
 }: {
   groups: ShotImageGroup[];
   readOnly: boolean;
+  voiceoverDisabled?: boolean;
   onChangeGroup: (shotId: string, patch: Partial<ShotImageGroup>) => void;
   selectedImages?: Record<string, string>;
   onSelectImages?: (value: Record<string, string>) => void;
@@ -1811,7 +1850,10 @@ function VideoGenerationShotEditor({
                 <label>分镜视频时长（秒）<input type="number" min={1} max={120} readOnly={readOnly} value={group.duration ?? 5} onChange={(event) => onChangeGroup(group.shotId, { duration: Number(event.target.value || 5) })} /></label>
                 <label>视频画面提示<textarea readOnly={readOnly} value={group.prompt} onChange={(event) => onChangeGroup(group.shotId, { prompt: event.target.value })} /></label>
                 <label>镜头动作<input readOnly={readOnly} value={group.action} onChange={(event) => onChangeGroup(group.shotId, { action: event.target.value })} /></label>
-                <label>口播 / 字幕<textarea readOnly={readOnly} value={group.words} onChange={(event) => onChangeGroup(group.shotId, { words: event.target.value })} /></label>
+                {!voiceoverDisabled && (
+                  <label>{WORDS_FIELD_LABEL}<textarea readOnly={readOnly} value={group.words} onChange={(event) => onChangeGroup(group.shotId, { words: event.target.value })} /></label>
+                )}
+                {voiceoverDisabled && <p className="field-helper">本任务已禁用口播/旁白</p>}
               </div>
               {selectedImages && onSelectImages && (
                 <RegenerateShotImagePicker
@@ -1998,6 +2040,7 @@ function ShotEditorLayout({ shots, children }: { shots: Shot[]; children: React.
 }
 
 function ShotStage({ task, editableShots, setEditableShots, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
+  const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
   return (
     <div className="stage-stack shot-review-stage">
       <ShotEditorLayout shots={editableShots}>
@@ -2006,6 +2049,7 @@ function ShotStage({ task, editableShots, setEditableShots, readOnly, onSaveStag
             shots={editableShots}
             readOnly={readOnly}
             workflowType={task.workflowType ?? "product_image_ad"}
+            voiceoverDisabled={voiceoverDisabled}
             onChange={setEditableShots}
           />
         </div>
@@ -2020,6 +2064,7 @@ function ShotStage({ task, editableShots, setEditableShots, readOnly, onSaveStag
 function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   const sourceVideoUrl = task.request?.sourceVideoUrl ?? resolveLegacyVideoUrl(task.request);
   const materialTitle = task.videoConfig?.productInfo?.name ?? task.request?.sourceVideoFileName ?? "视频素材";
+  const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
   return (
     <div className="stage-stack shot-review-stage shot-understanding-stage">
       <div className="shot-understanding-layout">
@@ -2045,7 +2090,13 @@ function VideoUnderstandingStage({ task, editableShots, setEditableShots, readOn
         </aside>
         <ShotEditorLayout shots={editableShots}>
           <div className="shot-review-list">
-            <ShotEditorList shots={editableShots} readOnly={readOnly} workflowType="video_storyboard_ad" onChange={setEditableShots} />
+            <ShotEditorList
+              shots={editableShots}
+              readOnly={readOnly}
+              workflowType="video_storyboard_ad"
+              voiceoverDisabled={voiceoverDisabled}
+              onChange={setEditableShots}
+            />
           </div>
         </ShotEditorLayout>
       </div>
@@ -2174,6 +2225,7 @@ function ShotReviewCard({
   videoGroup,
   shot,
   workflowType = "product_image_ad",
+  voiceoverDisabled = false,
   selectedImages,
   selectedVideos,
   onSelectImages,
@@ -2194,6 +2246,7 @@ function ShotReviewCard({
   videoGroup?: ShotVideoGroup;
   shot?: Shot;
   workflowType?: WorkflowType;
+  voiceoverDisabled?: boolean;
   selectedImages?: Record<string, string>;
   selectedVideos?: Record<string, string>;
   onSelectImages?: (value: Record<string, string>) => void;
@@ -2218,7 +2271,6 @@ function ShotReviewCard({
   const isCurrent = activeShotId === shotId;
   const promptLabel = workflowType === "video_storyboard_ad" ? "画面总结" : "视觉提示词";
   const actionLabel = workflowType === "video_storyboard_ad" ? "镜头动作" : "运镜 / 动作";
-  const wordsLabel = workflowType === "video_storyboard_ad" ? "口播 / 字幕" : "对白 / 旁白";
   const paramSource = shot ?? shotFromImageGroup(imageGroup ?? {
     shotId,
     duration: group.duration,
@@ -2295,7 +2347,8 @@ function ShotReviewCard({
               <div className="shot-context-thumb empty">无分镜图</div>
             )}
             <div className="shot-review-context-text">
-              <p><b>{wordsLabel}</b>{group.words || "—"}</p>
+              {!voiceoverDisabled && <p><b>{WORDS_FIELD_LABEL}</b>{group.words || "—"}</p>}
+              {voiceoverDisabled && <p><b>{WORDS_FIELD_LABEL}</b>已禁用</p>}
               <p><b>{actionLabel}</b>{group.action || "—"}</p>
             </div>
           </div>
@@ -2317,7 +2370,10 @@ function ShotReviewCard({
           </label>
           <label>{promptLabel}<textarea readOnly={readOnly} value={paramSource.prompt ?? ""} onChange={(event) => onShotChange?.(shotId, { prompt: event.target.value })} /></label>
           <label>{actionLabel}<input readOnly={readOnly} value={paramSource.action ?? ""} onChange={(event) => onShotChange?.(shotId, { action: event.target.value })} /></label>
-          <label>{wordsLabel}<textarea readOnly={readOnly} value={paramSource.words ?? ""} onChange={(event) => onShotChange?.(shotId, { words: event.target.value })} /></label>
+          {!voiceoverDisabled && (
+            <label>{WORDS_FIELD_LABEL}<textarea readOnly={readOnly} value={paramSource.words ?? ""} onChange={(event) => onShotChange?.(shotId, { words: event.target.value })} /></label>
+          )}
+          {voiceoverDisabled && <p className="field-helper">本任务已禁用口播/旁白</p>}
           {workflowType === "video_storyboard_ad" && (
             <ShotReferenceField
               shotId={shotId}
@@ -2574,6 +2630,7 @@ function useShotReviewExpansion(shotIds: string[]) {
 function ImageGenerateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   const groups = sortByShotId(task.imageGroups ?? []);
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
+  const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
   return (
     <div className="stage-stack shot-review-stage">
       <ShotReviewLayout groups={groups} assetKey="images">
@@ -2586,6 +2643,7 @@ function ImageGenerateStage({ task, editableShots, setEditableShots, selectedIma
               imageGroup={group}
               shot={editableShots.find((item) => item.shotId === group.shotId)}
               workflowType={task.workflowType ?? "product_image_ad"}
+              voiceoverDisabled={voiceoverDisabled}
               selectedImages={selectedImages}
               onSelectImages={setSelectedImages}
               onShotChange={(shotId, patch) => {
@@ -2621,6 +2679,7 @@ function ImageGenerateStage({ task, editableShots, setEditableShots, selectedIma
 function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   const groups = sortByShotId(task.scoredImageGroups ?? []);
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
+  const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
   return (
     <div className="stage-stack shot-review-stage">
       <ShotReviewLayout groups={groups} assetKey="images">
@@ -2633,6 +2692,7 @@ function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedIma
               imageGroup={group}
               shot={editableShots.find((item) => item.shotId === group.shotId)}
               workflowType={task.workflowType ?? "product_image_ad"}
+              voiceoverDisabled={voiceoverDisabled}
               selectedImages={selectedImages}
               onSelectImages={setSelectedImages}
               onShotChange={(shotId, patch) => {
@@ -2677,6 +2737,7 @@ function VideoGenerateStage({
   const videoGroups = sortByShotId(task.videoGroups ?? []);
   const missingCount = countMissingSelections(videoGroups, selectedVideos, "videos");
   const imageGroups = sortByShotId((task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? []);
+  const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
 
   function updateImageGroup(shotId: string, patch: Partial<ShotImageGroup>) {
     if (readOnly) return;
@@ -2691,6 +2752,7 @@ function VideoGenerateStage({
           <VideoGenerationShotEditor
             groups={editableImageGroups}
             readOnly={readOnly}
+            voiceoverDisabled={voiceoverDisabled}
             onChangeGroup={updateImageGroup}
           />
         </section>
@@ -2701,6 +2763,7 @@ function VideoGenerateStage({
             shots={editableShots}
             readOnly={readOnly}
             workflowType="product_image_ad"
+            voiceoverDisabled={voiceoverDisabled}
             onChange={setEditableShots}
           />
         </section>
@@ -2765,6 +2828,7 @@ function VideoEvaluateStage({ task, selectedImages, selectedVideos, setSelectedV
   const groups = sortByShotId(task.scoredVideoGroups ?? []);
   const imageGroups = sortByShotId((task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? []);
   const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
+  const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
   return (
     <div className="stage-stack shot-review-stage">
       <ShotReviewLayout groups={groups} assetKey="videos">
@@ -2775,6 +2839,7 @@ function VideoEvaluateStage({ task, selectedImages, selectedVideos, setSelectedV
               cardId={`shot-review-${group.shotId}`}
               mode="video-evaluate"
               videoGroup={group}
+              voiceoverDisabled={voiceoverDisabled}
               contextImageUrl={resolveContextImageUrl(group.shotId, selectedImages, imageGroups)}
               selectedVideos={selectedVideos}
               onSelectVideos={setSelectedVideos}
@@ -3118,6 +3183,21 @@ function RegenerateControls({
               <label>总时长<input type="number" min={1} value={regenerateDraft.taskInput.duration ?? 15} onChange={(event) => updateTaskInput({ duration: Number(event.target.value || 15) })} /></label>
               <label>比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
             </div>
+            <div className="config-section compact">
+              <span className="field-label">口播 / 旁白（单选）</span>
+              <div className="preset-row voiceover-options">
+                {voiceoverOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option.label}
+                    className={Boolean(regenerateDraft.taskInput.voiceoverDisabled) === option.value ? "active" : ""}
+                    onClick={() => updateTaskInput({ voiceoverDisabled: option.value })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </section>
         )}
         {regenerateStage === "SHOT_SCRIPT_GENERATING" && (
@@ -3152,6 +3232,7 @@ function RegenerateControls({
               shots={orderedEditableShots}
               readOnly={false}
               workflowType={task.workflowType ?? "product_image_ad"}
+              voiceoverDisabled={Boolean(regenerateDraft.taskInput.voiceoverDisabled)}
               onChange={setEditableShots}
             />
           </section>
@@ -3167,6 +3248,7 @@ function RegenerateControls({
               <VideoGenerationShotEditor
                 groups={orderedEditableImageGroups}
                 readOnly={false}
+                voiceoverDisabled={Boolean(regenerateDraft.taskInput.voiceoverDisabled)}
                 onChangeGroup={updateImageGroup}
                 selectedImages={regenerateDraft.selectedImages}
                 onSelectImages={(value) => setRegenerateDraft({ ...regenerateDraft, selectedImages: value })}
@@ -3177,6 +3259,7 @@ function RegenerateControls({
                 shots={orderedEditableShots}
                 readOnly={false}
                 workflowType="product_image_ad"
+                voiceoverDisabled={Boolean(regenerateDraft.taskInput.voiceoverDisabled)}
                 onChange={setEditableShots}
                 renderExtra={(shot) => (
                   <RegenerateShotImagePicker
@@ -3225,6 +3308,7 @@ function regenerateDraftFromTask(task: TaskDetail): RegenerateDraft {
       imageScoringEnabled: task.request?.imageScoringEnabled ?? false,
       videoScoringEnabled: task.request?.videoScoringEnabled ?? false,
       autoConfirmEnabled: task.request?.autoConfirmEnabled ?? false,
+      voiceoverDisabled: task.request?.voiceoverDisabled ?? false,
       generateImageCount: task.request?.generateImageCount ?? 4,
       generateVideoCount: task.request?.generateVideoCount ?? 2
     },
