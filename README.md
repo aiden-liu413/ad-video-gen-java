@@ -6,51 +6,7 @@
 
 ---
 
-## 界面预览
 
-| 创建任务（商品图） | 创建任务（视频素材） |
-|:---:|:---:|
-| ![创建任务](docs/screenshots/01-create-task.png) | ![创建视频任务](docs/screenshots/02-create-video-task.png) |
-
-| 营销策划 | 分镜脚本 |
-|:---:|:---:|
-| ![营销策划](docs/screenshots/03-marketing-planning.png) | ![分镜脚本](docs/screenshots/04-shot-script.png) |
-
-| 视频理解与分镜 | 图片生成与评估 |
-|:---:|:---:|
-| ![视频理解](docs/screenshots/05-video-understanding.png) | ![图片评估](docs/screenshots/06-image-review.png) |
-
-| 视频生成与评估 | 完成页 |
-|:---:|:---:|
-| ![视频评估](docs/screenshots/07-video-review.png) | ![完成](docs/screenshots/09-completed.png) |
-
-### 重燃抽屉（各阶段表单）
-
-**商品图流程**（5 个可重燃节点）：
-
-| 营销策划 | 分镜脚本 |
-|:---:|:---:|
-| ![营销策划重燃](docs/screenshots/regenerate/product-marketing.png) | ![分镜脚本重燃](docs/screenshots/regenerate/product-shot-script.png) |
-
-| 图片生成与评估 | 视频生成与评估 |
-|:---:|:---:|
-| ![图片重燃](docs/screenshots/regenerate/product-image.png) | ![视频重燃](docs/screenshots/regenerate/product-video.png) |
-
-| 最终合成 | |
-|:---:|:---:|
-| ![合成重燃](docs/screenshots/regenerate/product-final.png) | |
-
-**视频素材流程**（4 个可重燃节点，无营销策划）：
-
-| 视频理解与分镜 | 图片生成与评估 |
-|:---:|:---:|
-| ![理解重燃](docs/screenshots/regenerate/video-understanding.png) | ![图片重燃](docs/screenshots/regenerate/video-image.png) |
-
-| 视频生成与评估 | 最终合成 |
-|:---:|:---:|
-| ![视频重燃](docs/screenshots/regenerate/video-video.png) | ![合成重燃](docs/screenshots/regenerate/video-final.png) |
-
----
 
 ## 项目简介
 
@@ -385,6 +341,52 @@ ad-video-gen-java/
     ├── application.yml
     └── prompts/               # Agent 提示词
 ```
+
+---
+
+## 界面预览
+
+| 创建任务（商品图） | 创建任务（视频素材） |
+|:---:|:---:|
+| ![创建任务](docs/screenshots/01-create-task.png) | ![创建视频任务](docs/screenshots/02-create-video-task.png) |
+
+| 营销策划 | 分镜脚本 |
+|:---:|:---:|
+| ![营销策划](docs/screenshots/03-marketing-planning.png) | ![分镜脚本](docs/screenshots/04-shot-script.png) |
+
+| 视频理解与分镜 | 图片生成与评估 |
+|:---:|:---:|
+| ![视频理解](docs/screenshots/05-video-understanding.png) | ![图片评估](docs/screenshots/06-image-review.png) |
+
+| 视频生成与评估 | 完成页 |
+|:---:|:---:|
+| ![视频评估](docs/screenshots/07-video-review.png) | ![完成](docs/screenshots/09-completed.png) |
+
+### 重燃抽屉（各阶段表单）
+
+**商品图流程**（5 个可重燃节点）：
+
+| 营销策划 | 分镜脚本 |
+|:---:|:---:|
+| ![营销策划重燃](docs/screenshots/regenerate/product-marketing.png) | ![分镜脚本重燃](docs/screenshots/regenerate/product-shot-script.png) |
+
+| 图片生成与评估 | 视频生成与评估 |
+|:---:|:---:|
+| ![图片重燃](docs/screenshots/regenerate/product-image.png) | ![视频重燃](docs/screenshots/regenerate/product-video.png) |
+
+| 最终合成 | |
+|:---:|:---:|
+| ![合成重燃](docs/screenshots/regenerate/product-final.png) | |
+
+**视频素材流程**（4 个可重燃节点，无营销策划）：
+
+| 视频理解与分镜 | 图片生成与评估 |
+|:---:|:---:|
+| ![理解重燃](docs/screenshots/regenerate/video-understanding.png) | ![图片重燃](docs/screenshots/regenerate/video-image.png) |
+
+| 视频生成与评估 | 最终合成 |
+|:---:|:---:|
+| ![视频重燃](docs/screenshots/regenerate/video-video.png) | ![合成重燃](docs/screenshots/regenerate/video-final.png) |
 
 ---
 
