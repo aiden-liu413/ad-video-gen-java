@@ -290,7 +290,7 @@ const initialForm: FormState = {
   imageScoringEnabled: false,
   videoScoringEnabled: false,
   autoConfirmEnabled: false,
-  voiceoverDisabled: false,
+  voiceoverDisabled: true,
   generateImageCount: "4",
   generateVideoCount: "2"
 };
@@ -309,11 +309,6 @@ const aspectRatioOptions = [
 const durationOptions = ["5", "10", "15"];
 
 const WORDS_FIELD_LABEL = "口播 / 旁白";
-
-const voiceoverOptions = [
-  { value: false, label: "使用口播/旁白" },
-  { value: true, label: "禁用口播/旁白" }
-] as const;
 
 const platformOptions = [
   { value: "douyin", label: "抖音", icon: <Music2 size={18} /> },
@@ -350,8 +345,8 @@ const emptyRegenerateDraft: RegenerateDraft = {
     videoScoringEnabled: false,
     autoConfirmEnabled: false,
     voiceoverDisabled: false,
-    generateImageCount: 4,
-    generateVideoCount: 2
+    generateImageCount: 2,
+    generateVideoCount: 1
   },
   videoConfig: emptyVideoConfig,
   shots: [],
@@ -941,7 +936,7 @@ function Sidebar({
   return (
     <aside className="sidebar">
       <section>
-        <h2>最近任务（最多 20 条）</h2>
+        <h2>最近任务</h2>
         <p>{tasks.length} 个任务</p>
       </section>
       <div className="history-tools">
@@ -986,7 +981,6 @@ function Sidebar({
         ))}
         {tasks.length === 0 && <div className="empty">暂无任务</div>}
         {tasks.length > 0 && filteredTasks.length === 0 && <div className="empty">没有匹配任务</div>}
-        {tasks.length > 0 && <p className="sidebar-footnote">任务较多时在管理端查看完整列表</p>}
       </div>
     </aside>
   );
@@ -1172,54 +1166,39 @@ function CreateTaskView({
           </div>
           <input value={form.style} onChange={(event) => setFormValue("style", event.target.value, setForm)} placeholder="自定义风格描述" />
         </div>
-        <div className="config-section">
-          <span className="field-label">口播 / 旁白（单选）</span>
-          <div className="preset-row voiceover-options">
-            {voiceoverOptions.map((option) => (
-              <button
-                type="button"
-                key={option.label}
-                className={form.voiceoverDisabled === option.value ? "active" : ""}
-                onClick={() => setForm((previous) => ({ ...previous, voiceoverDisabled: option.value }))}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <small className="field-helper">
-            {form.voiceoverDisabled
-              ? "选中后，分镜脚本、图片与视频生成均不使用口播/旁白"
-              : "默认保留口播/旁白，可在分镜脚本中编辑"}
-          </small>
-        </div>
         <div className="summary-flags">
           <label className="summary-flag-toggle">
-            <span>图片评分</span>
+            <span>使用口播/旁白</span>
             <input
               type="checkbox"
-              checked={form.imageScoringEnabled}
-              onChange={(event) => setForm((previous) => ({ ...previous, imageScoringEnabled: event.target.checked }))}
+              checked={!form.voiceoverDisabled}
+              onChange={(event) => setForm((previous) => ({ ...previous, voiceoverDisabled: !event.target.checked }))}
             />
-            <small className="field-helper">生成后为每组图片打分，结果展示在候选下方</small>
           </label>
           <label className="summary-flag-toggle">
-            <span>视频评分</span>
-            <input
-              type="checkbox"
-              checked={form.videoScoringEnabled}
-              onChange={(event) => setForm((previous) => ({ ...previous, videoScoringEnabled: event.target.checked }))}
-            />
-            <small className="field-helper">生成后为每组视频打分，结果展示在候选下方</small>
-          </label>
-          <label className="summary-flag-toggle">
-            <span>自动确认</span>
-            <input
-              type="checkbox"
-              checked={form.autoConfirmEnabled}
-              onChange={(event) => setForm((previous) => ({ ...previous, autoConfirmEnabled: event.target.checked }))}
-            />
-            <small className="field-helper">跳过人工选图/选视频，直接选最高分（与手动保存选择互斥）</small>
-          </label>
+              <span>图片评分</span>
+              <input
+                type="checkbox"
+                checked={form.imageScoringEnabled}
+                onChange={(event) => setForm((previous) => ({ ...previous, imageScoringEnabled: event.target.checked }))}
+              />
+            </label>
+            <label className="summary-flag-toggle">
+              <span>视频评分</span>
+              <input
+                type="checkbox"
+                checked={form.videoScoringEnabled}
+                onChange={(event) => setForm((previous) => ({ ...previous, videoScoringEnabled: event.target.checked }))}
+              />
+            </label>
+            <label className="summary-flag-toggle">
+              <span>自动确认</span>
+              <input
+                type="checkbox"
+                checked={form.autoConfirmEnabled}
+                onChange={(event) => setForm((previous) => ({ ...previous, autoConfirmEnabled: event.target.checked }))}
+              />
+            </label>
         </div>
         <div className="submit-summary">
           <span>素材状态<b className={sourceReady ? "summary-ready" : "summary-warning"}>{sourceReady ? "已提供" : "待补充"}</b></span>
@@ -1356,7 +1335,7 @@ function WorkflowView(props: WorkflowViewProps) {
  */
 function TaskSummaryBar({ task, viewingStage, readOnly }: { task: TaskDetail; viewingStage: TaskStage; readOnly: boolean }) {
   const flags = [
-    task.request?.voiceoverDisabled ? "禁用口播/旁白" : "",
+    task.request?.voiceoverDisabled ? "" : "使用口播/旁白",
     task.request?.imageScoringEnabled ? "图片评分" : "",
     task.request?.videoScoringEnabled ? "视频评分" : "",
     task.request?.autoConfirmEnabled ? "自动确认" : ""
@@ -3183,20 +3162,15 @@ function RegenerateControls({
               <label>总时长<input type="number" min={1} value={regenerateDraft.taskInput.duration ?? 15} onChange={(event) => updateTaskInput({ duration: Number(event.target.value || 15) })} /></label>
               <label>比例<select value={regenerateDraft.taskInput.aspectRatio ?? "9:16"} onChange={(event) => updateTaskInput({ aspectRatio: event.target.value })}>{aspectRatioOptions.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select></label>
             </div>
-            <div className="config-section compact">
-              <span className="field-label">口播 / 旁白（单选）</span>
-              <div className="preset-row voiceover-options">
-                {voiceoverOptions.map((option) => (
-                  <button
-                    type="button"
-                    key={option.label}
-                    className={Boolean(regenerateDraft.taskInput.voiceoverDisabled) === option.value ? "active" : ""}
-                    onClick={() => updateTaskInput({ voiceoverDisabled: option.value })}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+            <div className="summary-flags compact">
+              <label className="summary-flag-toggle">
+                <span>使用口播/旁白</span>
+                <input
+                  type="checkbox"
+                  checked={!regenerateDraft.taskInput.voiceoverDisabled}
+                  onChange={(event) => updateTaskInput({ voiceoverDisabled: !event.target.checked })}
+                />
+              </label>
             </div>
           </section>
         )}

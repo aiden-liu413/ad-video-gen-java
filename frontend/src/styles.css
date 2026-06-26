@@ -590,6 +590,14 @@ pre {
   gap: 8px;
 }
 
+.config-section input {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #163047;
+}
+
 .source-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2447,8 +2455,12 @@ pre {
 
 .summary-flags {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.summary-flags.compact {
+  margin-top: 4px;
 }
 
 .submit-summary {
@@ -2485,6 +2497,12 @@ pre {
   padding: 8px 9px;
   background: #f8fdff;
   color: #637789;
+  cursor: pointer;
+}
+
+.summary-flag-toggle:has(input:checked) {
+  border-color: #18b5c7;
+  background: #e6fbff;
 }
 
 .summary-flag-toggle span {
@@ -2493,10 +2511,16 @@ pre {
   font-weight: 700;
 }
 
-.summary-flag-toggle input[type="checkbox"] {
+.summary-flag-toggle:has(input:checked) span {
+  color: #07869b;
+}
+
+.summary-flag-toggle input[type="checkbox"],
+.summary-flag-toggle input[type="radio"] {
   width: 18px;
   height: 18px;
   margin: 0;
+  accent-color: #18b5c7;
 }
 
 .regen-shot textarea,
@@ -2813,6 +2837,10 @@ pre {
 
   .filter-row,
   .task-summary-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-flags {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
