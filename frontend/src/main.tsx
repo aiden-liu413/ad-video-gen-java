@@ -253,6 +253,7 @@ type WorkflowViewProps = {
   onSaveStage: () => void;
   onSaveSelections: () => void;
   onRegenerate: () => Promise<boolean>;
+  onRegenerateShots: (fromStage: "IMAGE_GENERATING" | "VIDEO_GENERATING", shotIds: string[]) => Promise<boolean>;
   isDirty: boolean;
   stageTodoSummary: string;
   stageSaveLabel: string;
@@ -711,6 +712,33 @@ function App() {
     };
   }
 
+  async function regenerateSelectedShots(fromStage: "IMAGE_GENERATING" | "VIDEO_GENERATING", shotIds: string[]) {
+    if (!task || shotIds.length === 0) return false;
+    const sortedShotIds = sortByShotId(shotIds.map((shotId) => ({ shotId }))).map((item) => item.shotId);
+    const selectedShots = editableShots.filter((shot) => sortedShotIds.includes(shot.shotId));
+    const baselineShots = task.shots ?? [];
+    const payload: Record<string, unknown> = {
+      fromStage,
+      shotIds: sortedShotIds,
+      shots: shotsForRegenerateApi(selectedShots, baselineShots),
+      taskInput: {
+        generateImageCount: task.request?.generateImageCount ?? 4,
+        generateVideoCount: task.request?.generateVideoCount ?? 2
+      }
+    };
+    if (fromStage === "VIDEO_GENERATING") {
+      const selectedImagesPayload = buildSelectedImagesPayload(task, editableShots, editableImageGroups, selectedImages)
+        .filter((item) => sortedShotIds.includes(item.shotId));
+      const missingImages = sortedShotIds.filter((shotId) => !selectedImagesPayload.some((item) => item.shotId === shotId));
+      if (missingImages.length > 0) {
+        setMessage(`分镜 ${missingImages.join("、")} 未选择输入图片，无法重生视频`);
+        return false;
+      }
+      payload.selectedImages = selectedImagesPayload;
+    }
+    return postAction(`/api/video-tasks/${task.taskId}/regenerate`, `已提交 ${sortedShotIds.length} 个分镜重生成`, payload, { waitForChange: true });
+  }
+
   async function regenerate(): Promise<boolean> {
     if (!task) return false;
     const draft = activeRegenerateDraft();
@@ -795,6 +823,7 @@ function App() {
             onSaveStage={saveStageChanges}
             onSaveSelections={saveSelections}
             onRegenerate={regenerate}
+            onRegenerateShots={regenerateSelectedShots}
             isDirty={dirtyState().dirty}
             stageTodoSummary={task ? getStageTodoSummary(task, selectedImages, selectedVideos) : ""}
             stageSaveLabel={task ? getStageSaveLabel(task) : ""}
@@ -1566,7 +1595,7 @@ function StageContent(props: StageViewProps) {
       : <ShotStage {...props} />;
   }
   if (isImageReviewStage(viewStage)) return hasScoredImages(task) ? <ImageEvaluateStage {...props} /> : <ImageGenerateStage {...props} />;
-  if (isVideoReviewStage(viewStage)) return hasScoredVideos(task) ? <VideoEvaluateStage {...props} /> : <VideoGenerateStage {...props} />;
+  if (isVideoReviewStage(viewStage)) return <VideoReviewStage {...props} />;
   if (viewStage === "FINAL_COMPOSING" || viewStage === "COMPLETED") return <FinalStage task={task} />;
   return (
     <div className="empty-state">
@@ -2107,6 +2136,20 @@ function shotFromImageGroup(group: ShotImageGroup, orderNo: number): Shot {
   };
 }
 
+function shotFromVideoGroup(group: ShotVideoGroup, orderNo: number): Shot {
+  return {
+    shotId: group.shotId,
+    orderNo,
+    duration: group.duration ?? 5,
+    prompt: group.prompt,
+    action: group.action,
+    words: group.words,
+    reference: group.reference ?? "",
+    camera: "",
+    sceneType: ""
+  };
+}
+
 /**
  * 功能描述：渲染图片和视频审核页左侧的分镜导航，并支持点击后只滚动右侧分镜列表定位到对应卡片。
  * 参数解释：groups 表示当前审核页的分镜候选集合；selected 表示已选择素材的分镜映射；assetKey 表示候选素材类型。
@@ -2217,10 +2260,13 @@ function ShotReviewCard({
   taskStatus,
   allExpanded = false,
   detailsExpanded = false,
-  onToggleDetails
+  onToggleDetails,
+  batchSelectEnabled = false,
+  batchSelected = false,
+  onToggleBatchSelect
 }: {
   cardId: string;
-  mode: "image-generate" | "image-evaluate" | "video-evaluate";
+  mode: "image-generate" | "image-evaluate" | "video-generate" | "video-evaluate";
   imageGroup?: ShotImageGroup;
   videoGroup?: ShotVideoGroup;
   shot?: Shot;
@@ -2239,6 +2285,9 @@ function ShotReviewCard({
   allExpanded?: boolean;
   detailsExpanded?: boolean;
   onToggleDetails?: () => void;
+  batchSelectEnabled?: boolean;
+  batchSelected?: boolean;
+  onToggleBatchSelect?: () => void;
 }) {
   const [uploadError, setUploadError] = useState("");
   const activeShotId = useShotReviewNav();
@@ -2250,18 +2299,30 @@ function ShotReviewCard({
   const isCurrent = activeShotId === shotId;
   const promptLabel = workflowType === "video_storyboard_ad" ? "画面总结" : "视觉提示词";
   const actionLabel = workflowType === "video_storyboard_ad" ? "镜头动作" : "运镜 / 动作";
-  const paramSource = shot ?? shotFromImageGroup(imageGroup ?? {
-    shotId,
-    duration: group.duration,
-    prompt: group.prompt,
-    action: group.action,
-    words: group.words,
-    reference: group.reference ?? "",
-    images: []
-  }, 0);
+  const paramSource = shot ?? (imageGroup
+    ? shotFromImageGroup(imageGroup, 0)
+    : videoGroup
+      ? shotFromVideoGroup(videoGroup, 0)
+      : {
+          shotId,
+          orderNo: 0,
+          duration: group.duration ?? 5,
+          prompt: group.prompt,
+          action: group.action,
+          words: group.words,
+          reference: group.reference ?? "",
+          camera: "",
+          sceneType: ""
+        });
   const currentReference = shot?.reference ?? imageGroup?.reference ?? group.reference ?? "";
   const detailsOpen = allExpanded || detailsExpanded;
+  const isVideoMode = mode === "video-evaluate" || mode === "video-generate";
   const detailsToggleLabel = mode === "video-evaluate" ? "分镜详情" : "编辑参数";
+  const assetCountLabel = assets.length > 0
+    ? `${assets.length} 个候选`
+    : isVideoMode && taskStatus === "RUNNING"
+      ? "生成中"
+      : "0 个候选";
 
   async function uploadReference(file: File) {
     if (readOnly || !onShotChange) return;
@@ -2276,9 +2337,22 @@ function ShotReviewCard({
   return (
     <article className={reviewCardClassName(isCurrent)} id={cardId}>
       <header className="shot-review-header">
-        <div>
-          <b>{shotId}</b>
-          <span>{group.duration ?? "-"} 秒 · {assets.length} 个候选</span>
+        <div className="shot-review-header-main">
+          {batchSelectEnabled && (
+            <label className="shot-batch-select">
+              <input
+                type="checkbox"
+                checked={batchSelected}
+                onChange={onToggleBatchSelect}
+                disabled={readOnly}
+                aria-label={`选择 ${shotId} 参与重生成`}
+              />
+            </label>
+          )}
+          <div>
+            <b>{shotId}</b>
+            <span>{group.duration ?? "-"} 秒 · {assetCountLabel}</span>
+          </div>
         </div>
         <div className="shot-review-header-actions">
           <button
@@ -2292,7 +2366,7 @@ function ShotReviewCard({
         </div>
       </header>
 
-      {mode === "video-evaluate" && videoGroup ? (
+      {isVideoMode && videoGroup ? (
         <VideoCandidateGrid
           group={videoGroup}
           selected={selectedVideos ?? {}}
@@ -2517,6 +2591,14 @@ function VideoCandidateGrid({
   }
 
   if (group.videos.length === 0) {
+    if (taskStatus === "RUNNING") {
+      return (
+        <div className="empty shot-review-generating">
+          <Loader2 className="spin" size={20} />
+          <span>视频生成中…</span>
+        </div>
+      );
+    }
     return <div className="empty">暂无视频候选</div>;
   }
 
@@ -2600,18 +2682,107 @@ function useShotReviewExpansion(shotIds: string[]) {
   return { allExpanded, isDetailsExpanded, toggleDetails, toggleExpandAll };
 }
 
+function useBatchRegenSelection(shotIds: string[], resetKey: string) {
+  const [selectedShotIds, setSelectedShotIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelectedShotIds([]);
+  }, [resetKey, shotIds.join("|")]);
+
+  function toggleShot(shotId: string) {
+    setSelectedShotIds((previous) => previous.includes(shotId)
+      ? previous.filter((item) => item !== shotId)
+      : [...previous, shotId]);
+  }
+
+  function toggleAll() {
+    setSelectedShotIds((previous) => previous.length === shotIds.length ? [] : [...shotIds]);
+  }
+
+  return {
+    selectedShotIds,
+    toggleShot,
+    toggleAll,
+    isSelected: (shotId: string) => selectedShotIds.includes(shotId),
+    allSelected: shotIds.length > 0 && selectedShotIds.length === shotIds.length
+  };
+}
+
+function ShotReviewStageBody({ batchBar, children }: { batchBar?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="shot-review-stage-body">
+      {batchBar}
+      {children}
+    </div>
+  );
+}
+
+function BatchRegenBar({
+  shotIds,
+  selectedShotIds,
+  allSelected,
+  onToggleAll,
+  onRegenerate,
+  busy,
+  assetLabel
+}: {
+  shotIds: string[];
+  selectedShotIds: string[];
+  allSelected: boolean;
+  onToggleAll: () => void;
+  onRegenerate: () => void;
+  busy: boolean;
+  assetLabel: "图片" | "视频";
+}) {
+  return (
+    <div className="batch-regen-bar panel-card">
+      <label className="batch-regen-select-all">
+        <input type="checkbox" checked={allSelected} onChange={onToggleAll} disabled={shotIds.length === 0 || busy} />
+        <span>全选分镜</span>
+      </label>
+      <span className="batch-regen-summary">已选 <b>{selectedShotIds.length}</b> / {shotIds.length} 个分镜</span>
+      <span className="batch-regen-spacer" aria-hidden="true" />
+      <button type="button" className="secondary" disabled={selectedShotIds.length === 0 || busy} onClick={onRegenerate}>
+        {busy ? <Loader2 className="spin" size={16} /> : <RotateCcw size={16} />}
+        重新生成{assetLabel}
+      </button>
+    </div>
+  );
+}
+
 /**
  * 功能描述：渲染图片生成阶段的分镜素材选择页，左侧提供分镜导航，右侧展示每组图片候选与参数编辑入口。
  * 参数解释：task 表示任务详情；editableShots 表示可编辑分镜；selectedImages 表示当前图片选择；readOnly 表示是否只读；onSaveStage 表示保存回调。
  * 返回对象描述：返回图片生成阶段的审核与保存界面。
  * 可能抛出的异常：无。
  */
-function ImageGenerateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
+function ImageGenerateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, busy, onRegenerateShots, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   const groups = sortByShotId(task.imageGroups ?? []);
-  const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
+  const shotIds = groups.map((group) => group.shotId);
+  const expansion = useShotReviewExpansion(shotIds);
+  const batchSelection = useBatchRegenSelection(shotIds, `${task.taskId}:${task.updatedAt}:image-generate`);
   const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
+
+  async function handleBatchRegenerate() {
+    if (readOnly || batchSelection.selectedShotIds.length === 0) return;
+    await onRegenerateShots("IMAGE_GENERATING", batchSelection.selectedShotIds);
+  }
+
   return (
     <div className="stage-stack shot-review-stage">
+      <ShotReviewStageBody
+        batchBar={!readOnly ? (
+          <BatchRegenBar
+            shotIds={shotIds}
+            selectedShotIds={batchSelection.selectedShotIds}
+            allSelected={batchSelection.allSelected}
+            onToggleAll={batchSelection.toggleAll}
+            onRegenerate={() => void handleBatchRegenerate()}
+            busy={busy}
+            assetLabel="图片"
+          />
+        ) : undefined}
+      >
       <ShotReviewLayout groups={groups} assetKey="images">
         <div className="shot-review-list">
           {groups.map((group) => (
@@ -2638,10 +2809,14 @@ function ImageGenerateStage({ task, editableShots, setEditableShots, selectedIma
               allExpanded={expansion.allExpanded}
               detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
               onToggleDetails={() => expansion.toggleDetails(group.shotId)}
+              batchSelectEnabled={!readOnly}
+              batchSelected={batchSelection.isSelected(group.shotId)}
+              onToggleBatchSelect={() => batchSelection.toggleShot(group.shotId)}
             />
           ))}
         </div>
       </ShotReviewLayout>
+      </ShotReviewStageBody>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存图片选择"} onSave={() => void onSaveStage()} dirty={isDirty} />
       )}
@@ -2655,12 +2830,33 @@ function ImageGenerateStage({ task, editableShots, setEditableShots, selectedIma
  * 返回对象描述：返回图片评估阶段的审核与保存界面。
  * 可能抛出的异常：无。
  */
-function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
+function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedImages, setSelectedImages, readOnly, busy, onRegenerateShots, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
   const groups = sortByShotId(task.scoredImageGroups ?? []);
-  const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
+  const shotIds = groups.map((group) => group.shotId);
+  const expansion = useShotReviewExpansion(shotIds);
+  const batchSelection = useBatchRegenSelection(shotIds, `${task.taskId}:${task.updatedAt}:image-evaluate`);
   const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
+
+  async function handleBatchRegenerate() {
+    if (readOnly || batchSelection.selectedShotIds.length === 0) return;
+    await onRegenerateShots("IMAGE_GENERATING", batchSelection.selectedShotIds);
+  }
+
   return (
     <div className="stage-stack shot-review-stage">
+      <ShotReviewStageBody
+        batchBar={!readOnly ? (
+          <BatchRegenBar
+            shotIds={shotIds}
+            selectedShotIds={batchSelection.selectedShotIds}
+            allSelected={batchSelection.allSelected}
+            onToggleAll={batchSelection.toggleAll}
+            onRegenerate={() => void handleBatchRegenerate()}
+            busy={busy}
+            assetLabel="图片"
+          />
+        ) : undefined}
+      >
       <ShotReviewLayout groups={groups} assetKey="images">
         <div className="shot-review-list">
           {groups.map((group) => (
@@ -2687,10 +2883,14 @@ function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedIma
               allExpanded={expansion.allExpanded}
               detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
               onToggleDetails={() => expansion.toggleDetails(group.shotId)}
+              batchSelectEnabled={!readOnly}
+              batchSelected={batchSelection.isSelected(group.shotId)}
+              onToggleBatchSelect={() => batchSelection.toggleShot(group.shotId)}
             />
           ))}
         </div>
       </ShotReviewLayout>
+      </ShotReviewStageBody>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存图片选择"} onSave={() => void onSaveStage()} dirty={isDirty} />
       )}
@@ -2698,146 +2898,160 @@ function ImageEvaluateStage({ task, editableShots, setEditableShots, selectedIma
   );
 }
 
-function VideoGenerateStage({
+function VideoReviewStage({
   task,
   editableShots,
   setEditableShots,
   editableImageGroups,
   setEditableImageGroups,
   selectedImages,
-  setSelectedImages,
   selectedVideos,
   setSelectedVideos,
   readOnly,
+  busy,
+  onRegenerateShots,
   onSaveStage,
   stageSaveLabel,
   isDirty
 }: StageViewProps) {
-  const videoGroups = sortByShotId(task.videoGroups ?? []);
-  const missingCount = countMissingSelections(videoGroups, selectedVideos, "videos");
+  const scored = hasScoredVideos(task);
+  const mode: "video-generate" | "video-evaluate" = scored ? "video-evaluate" : "video-generate";
+  const groups = videoReviewGroups(task, editableShots, editableImageGroups, selectedImages);
+  const shotIds = groups.map((group) => group.shotId);
   const imageGroups = sortByShotId((task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? []);
+  const expansion = useShotReviewExpansion(shotIds);
+  const batchSelection = useBatchRegenSelection(shotIds, `${task.taskId}:${task.updatedAt}:video-review`);
   const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
+  const showScore = Boolean(task.request?.videoScoringEnabled);
+  const allowPendingScore = scored || task.status === "RUNNING";
 
-  function updateImageGroup(shotId: string, patch: Partial<ShotImageGroup>) {
+  async function handleBatchRegenerate() {
+    if (readOnly || batchSelection.selectedShotIds.length === 0) return;
+    await onRegenerateShots("VIDEO_GENERATING", batchSelection.selectedShotIds);
+  }
+
+  function onShotChange(shotId: string, patch: Partial<Shot>) {
     if (readOnly) return;
-    setEditableImageGroups(editableImageGroups.map((group) => group.shotId === shotId ? { ...group, ...patch } : group));
+    const index = groups.findIndex((group) => group.shotId === shotId);
+    const fallback = index >= 0 ? shotFromVideoGroup(groups[index], index + 1) : { shotId, orderNo: 1, duration: 5, prompt: "", action: "", words: "", reference: "", camera: "", sceneType: "" };
+    if (task.workflowType === "video_storyboard_ad") {
+      setEditableImageGroups(editableImageGroups.map((group) => group.shotId === shotId
+        ? {
+            ...group,
+            duration: patch.duration ?? group.duration,
+            prompt: patch.prompt ?? group.prompt,
+            action: patch.action ?? group.action,
+            words: patch.words ?? group.words,
+            reference: patch.reference ?? group.reference
+          }
+        : group));
+    }
+    setEditableShots(upsertEditableShot(editableShots, shotId, patch, fallback));
+  }
+
+  if (groups.length === 0) {
+    return <div className="empty-state">等待生成分镜视频。</div>;
   }
 
   return (
-    <div className="stage-stack">
-      {task.workflowType === "video_storyboard_ad" ? (
-        <section className="panel-card">
-          <div className="section-head"><h3>分镜视频参数</h3><span>{editableImageGroups.length} 组分镜</span></div>
-          <VideoGenerationShotEditor
-            groups={editableImageGroups}
-            readOnly={readOnly}
-            voiceoverDisabled={voiceoverDisabled}
-            onChangeGroup={updateImageGroup}
-          />
-        </section>
-      ) : (
-        <section className="panel-card">
-          <div className="section-head"><h3>分镜参数</h3><span>{editableShots.length} 个分镜</span></div>
-          <ShotEditorList
-            shots={editableShots}
-            readOnly={readOnly}
-            workflowType="product_image_ad"
-            voiceoverDisabled={voiceoverDisabled}
-            onChange={setEditableShots}
-          />
-        </section>
-      )}
-      {task.workflowType === "video_storyboard_ad" && (
-        <section className="panel-card">
-          <div className="section-head"><h3>选定分镜图片</h3><span>{editableImageGroups.length} 组分镜</span></div>
-          <MediaGrid
-            groups={editableImageGroups}
-            selected={selectedImages}
-            onSelect={setSelectedImages}
-            type="image"
-            readOnly={readOnly}
-            showScore={Boolean(task.request?.imageScoringEnabled)}
-            allowPendingScore={false}
-            taskStatus={task.status}
-          />
-        </section>
-      )}
-      {task.workflowType === "product_image_ad" && imageGroups.length > 0 && (
-        <section className="panel-card">
-          <div className="section-head"><h3>用于生成分镜视频的图片</h3></div>
-          <MediaGrid
-            groups={imageGroups}
-            selected={selectedImages}
-            onSelect={setSelectedImages}
-            type="image"
-            readOnly={readOnly}
-            showScore={Boolean(task.request?.imageScoringEnabled)}
-            allowPendingScore={false}
-            taskStatus={task.status}
-          />
-        </section>
-      )}
-      <section className="panel-card">
-        <div className="section-head"><h3>分镜视频候选</h3><span>{missingCount === 0 ? "已完成选择" : `${missingCount} 组待选择`}</span></div>
-        <MediaGrid
-          groups={videoGroups}
-          selected={selectedVideos}
-          onSelect={setSelectedVideos}
-          type="video"
-          readOnly={readOnly}
-          showScore={Boolean(task.request?.videoScoringEnabled)}
-          allowPendingScore={false}
-          taskStatus={task.status}
-        />
-      </section>
-      {!readOnly && (
-        <StageSaveBar label={stageSaveLabel || "保存本阶段更改"} onSave={() => void onSaveStage()} dirty={isDirty} />
-      )}
-    </div>
-  );
-}
-
-/**
- * 功能描述：渲染视频评估阶段的分镜视频审核页，左侧提供分镜导航，右侧展示视频候选和分镜上下文。
- * 参数解释：task 表示任务详情；selectedImages 表示已选图片上下文；selectedVideos 表示当前视频选择；readOnly 表示是否只读；onSaveStage 表示保存回调。
- * 返回对象描述：返回视频评估阶段的审核与保存界面。
- * 可能抛出的异常：无。
- */
-function VideoEvaluateStage({ task, selectedImages, selectedVideos, setSelectedVideos, readOnly, onSaveStage, stageSaveLabel, isDirty }: StageViewProps) {
-  const groups = sortByShotId(task.scoredVideoGroups ?? []);
-  const imageGroups = sortByShotId((task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? []);
-  const expansion = useShotReviewExpansion(groups.map((group) => group.shotId));
-  const voiceoverDisabled = Boolean(task.request?.voiceoverDisabled);
-  return (
     <div className="stage-stack shot-review-stage">
+      <ShotReviewStageBody
+        batchBar={!readOnly && groups.length > 0 ? (
+          <BatchRegenBar
+            shotIds={shotIds}
+            selectedShotIds={batchSelection.selectedShotIds}
+            allSelected={batchSelection.allSelected}
+            onToggleAll={batchSelection.toggleAll}
+            onRegenerate={() => void handleBatchRegenerate()}
+            busy={busy}
+            assetLabel="视频"
+          />
+        ) : undefined}
+      >
       <ShotReviewLayout groups={groups} assetKey="videos">
         <div className="shot-review-list">
           {groups.map((group) => (
             <ShotReviewCard
               key={group.shotId}
               cardId={`shot-review-${group.shotId}`}
-              mode="video-evaluate"
+              mode={mode}
               videoGroup={group}
+              shot={editableShots.find((item) => item.shotId === group.shotId)}
+              workflowType={task.workflowType ?? "product_image_ad"}
               voiceoverDisabled={voiceoverDisabled}
               contextImageUrl={resolveContextImageUrl(group.shotId, selectedImages, imageGroups)}
               selectedVideos={selectedVideos}
               onSelectVideos={setSelectedVideos}
+              onShotChange={onShotChange}
               readOnly={readOnly}
-              showScore={Boolean(task.request?.videoScoringEnabled)}
-              allowPendingScore
+              showScore={showScore}
+              allowPendingScore={allowPendingScore}
               taskStatus={task.status}
               allExpanded={expansion.allExpanded}
               detailsExpanded={expansion.isDetailsExpanded(group.shotId)}
               onToggleDetails={() => expansion.toggleDetails(group.shotId)}
+              batchSelectEnabled={!readOnly}
+              batchSelected={batchSelection.isSelected(group.shotId)}
+              onToggleBatchSelect={() => batchSelection.toggleShot(group.shotId)}
             />
           ))}
         </div>
       </ShotReviewLayout>
+      </ShotReviewStageBody>
       {!readOnly && (
         <StageSaveBar label={stageSaveLabel || "保存视频选择"} onSave={() => void onSaveStage()} dirty={isDirty} />
       )}
     </div>
   );
+}
+
+function videoReviewGroups(
+  task: TaskDetail,
+  editableShots: Shot[],
+  editableImageGroups: ShotImageGroup[],
+  selectedImages: Record<string, string>
+): ShotVideoGroup[] {
+  if ((task.scoredVideoGroups ?? []).length > 0) {
+    return sortByShotId(task.scoredVideoGroups ?? []);
+  }
+  if ((task.videoGroups ?? []).length > 0) {
+    return sortByShotId(task.videoGroups ?? []);
+  }
+  return buildPlaceholderVideoGroups(task, editableShots, editableImageGroups, selectedImages);
+}
+
+function buildPlaceholderVideoGroups(
+  task: TaskDetail,
+  editableShots: Shot[],
+  editableImageGroups: ShotImageGroup[],
+  selectedImages: Record<string, string>
+): ShotVideoGroup[] {
+  const imageGroups = sortByShotId(
+    editableImageGroups.length > 0
+      ? editableImageGroups
+      : (task.scoredImageGroups?.length ? task.scoredImageGroups : task.imageGroups) ?? []
+  );
+  const shots = editableShots.length > 0 ? editableShots : task.shots ?? [];
+  const shotIds = shots.length > 0
+    ? shots.map((shot) => shot.shotId)
+    : imageGroups.map((group) => group.shotId);
+
+  return shotIds.map((shotId, index) => {
+    const shot = shots.find((item) => item.shotId === shotId);
+    const imageGroup = imageGroups.find((group) => group.shotId === shotId);
+    const selectedAssetId = selectedImages[shotId];
+    const selectedImage = imageGroup?.images.find((item) => item.assetId === selectedAssetId);
+    const reference = selectedImage?.url ?? imageGroup?.reference ?? shot?.reference ?? "";
+    return {
+      shotId,
+      duration: shot?.duration ?? imageGroup?.duration ?? 5,
+      prompt: shot?.prompt ?? imageGroup?.prompt ?? "",
+      action: shot?.action ?? imageGroup?.action ?? "",
+      words: shot?.words ?? imageGroup?.words ?? "",
+      reference,
+      videos: []
+    };
+  });
 }
 
 function FinalStage({ task }: { task: TaskDetail }) {
@@ -3778,10 +3992,7 @@ function getStageSaveLabel(task: TaskDetail) {
   const stage = canonicalStage(task.stage);
   if (stage === "SHOT_SCRIPT_GENERATING") return "保存分镜";
   if (stage === "IMAGE_GENERATING") return "保存图片选择";
-  if (stage === "VIDEO_GENERATING") {
-    if (task.stage === "VIDEO_EVALUATING" || task.stage === "VIDEO_SELECTING") return "保存视频选择";
-    return "保存本阶段更改";
-  }
+  if (stage === "VIDEO_GENERATING") return "保存视频选择";
   return "";
 }
 

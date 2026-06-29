@@ -1385,6 +1385,19 @@ pre {
   min-height: 0;
 }
 
+.shot-review-stage-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  height: 100%;
+}
+
+.shot-review-stage-body > .shot-review-layout {
+  min-height: 0;
+  height: 100%;
+}
+
 .shot-understanding-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1634,6 +1647,85 @@ pre {
   gap: 12px;
 }
 
+.shot-review-header-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.shot-review-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.shot-batch-select {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.shot-batch-select input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.batch-regen-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+
+.batch-regen-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #52677c;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.batch-regen-select-all input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.batch-regen-summary {
+  font-size: 13px;
+  color: #6f8395;
+  white-space: nowrap;
+}
+
+.batch-regen-summary b {
+  color: #173149;
+}
+
+.batch-regen-bar .batch-regen-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.batch-regen-bar button.secondary {
+  margin-left: 0;
+  white-space: nowrap;
+}
+
 .shot-review-header b {
   display: block;
   color: #173149;
@@ -1645,13 +1737,6 @@ pre {
   margin-top: 4px;
   color: #6f8395;
   font-size: 12px;
-}
-
-.shot-review-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
 }
 
 .shot-review-header em.ready,
@@ -2746,6 +2831,16 @@ pre {
   color: #6e8194;
   background: rgba(255, 255, 255, 0.62);
   text-align: center;
+}
+
+.shot-review-generating {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 20px;
+  font-size: 13px;
 }
 
 .spin {

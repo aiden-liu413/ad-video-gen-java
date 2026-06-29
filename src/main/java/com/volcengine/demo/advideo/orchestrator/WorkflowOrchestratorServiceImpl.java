@@ -52,10 +52,13 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 @Service
 public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorService {
@@ -321,12 +324,303 @@ public class WorkflowOrchestratorServiceImpl implements WorkflowOrchestratorServ
     @Override
     @Transactional
     public void regenerate(String taskId, RegenerateVideoTaskRequest request) {
+        if (request != null && !isEmpty(request.shotIds())) {
+            regenerateShotsPartial(taskId, request);
+            return;
+        }
         TaskStage fromStage = request == null || !StringUtils.hasText(request.fromStage())
                 ? TaskStage.IMAGE_GENERATING
                 : TaskStage.valueOf(request.fromStage());
         applyRegenerateInputs(taskId, fromStage, request);
         clearFromStage(taskId, fromStage);
         advanceAfterCommit(taskId);
+    }
+
+    private void regenerateShotsPartial(String taskId, RegenerateVideoTaskRequest request) {
+        if (!StringUtils.hasText(request.fromStage())) {
+            throw new IllegalArgumentException("分镜重燃需要指定 fromStage");
+        }
+        TaskStage fromStage = TaskStage.valueOf(request.fromStage());
+        if (fromStage != TaskStage.IMAGE_GENERATING && fromStage != TaskStage.VIDEO_GENERATING) {
+            throw new IllegalArgumentException("分镜重燃仅支持 IMAGE_GENERATING 或 VIDEO_GENERATING");
+        }
+        VideoTaskEntity task = taskRepository.findByTaskId(taskId).orElseThrow();
+        if (TaskStatus.RUNNING.name().equals(task.getStatus())) {
+            throw new IllegalStateException("任务执行中，请稍后再试");
+        }
+        List<String> shotIds = request.shotIds().stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (shotIds.isEmpty()) {
+            throw new IllegalArgumentException("请至少选择一个分镜");
+        }
+        WorkflowContext context = loadContext(taskId);
+        validatePartialRegenerateShots(context.getShots(), shotIds);
+        if (request.taskInput() != null) {
+            updateTaskInput(taskId, request.taskInput());
+        }
+        if (request.shots() != null && !request.shots().isEmpty()) {
+            context.setShots(mergeEditableShotFields(context.getShots(), request.shots()));
+        }
+        if (fromStage == TaskStage.VIDEO_GENERATING && request.selectedImages() != null && !request.selectedImages().isEmpty()) {
+            mergePartialSelectedImages(context, request.selectedImages(), shotIds);
+        }
+        if (fromStage == TaskStage.IMAGE_GENERATING) {
+            clearShotsImageData(context, shotIds);
+        } else {
+            clearShotsVideoData(context, shotIds);
+        }
+        context.setFinalVideo(null);
+        saveContext(context);
+        markStage(taskId, fromStage);
+        log.info("Partial shot regenerate scheduled, taskId={}, fromStage={}, shotIds={}", taskId, fromStage, shotIds);
+        regenerateShotsPartialAfterCommit(taskId, fromStage, shotIds);
+    }
+
+    private void regenerateShotsPartialAfterCommit(String taskId, TaskStage fromStage, List<String> shotIds) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            regenerateShotsPartialAsync(taskId, fromStage, shotIds);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                regenerateShotsPartialAsync(taskId, fromStage, shotIds);
+            }
+        });
+    }
+
+    private void regenerateShotsPartialAsync(String taskId, TaskStage fromStage, List<String> shotIds) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                CreateVideoTaskRequest request = requestFromTask(taskRepository.findByTaskId(taskId).orElseThrow());
+                WorkflowContext context = loadContext(taskId);
+                VideoConfig config = context.getVideoConfig();
+                if (config == null) {
+                    throw new IllegalStateException("缺少 videoConfig，无法重燃分镜");
+                }
+                if (fromStage == TaskStage.IMAGE_GENERATING) {
+                    regenerateImagesForShots(request, config, context, shotIds);
+                } else {
+                    regenerateVideosForShots(request, config, context, shotIds);
+                }
+                saveContext(context);
+                markWaitingReview(taskId, fromStage);
+                log.info("Partial shot regenerate completed, taskId={}, fromStage={}, shotIds={}", taskId, fromStage, shotIds);
+            } catch (RuntimeException ex) {
+                log.error("Partial shot regenerate failed, taskId={}, shotIds={}", taskId, shotIds, ex);
+                markFailed(taskId, ex);
+            }
+        }).exceptionally(ex -> {
+            log.error("Partial shot regenerate async failed, taskId={}, shotIds={}", taskId, shotIds, ex);
+            return null;
+        });
+    }
+
+    private void regenerateImagesForShots(
+            CreateVideoTaskRequest request,
+            VideoConfig config,
+            WorkflowContext context,
+            List<String> shotIds
+    ) {
+        Set<String> targetIds = new HashSet<>(shotIds);
+        List<Shot> targets = context.getShots().stream()
+                .filter(shot -> targetIds.contains(shot.shotId()))
+                .toList();
+        List<ShotImageGroup> generated = awaitAll(targets.stream()
+                .map(shot -> CompletableFuture.supplyAsync(() -> generateImageGroupForShot(request, config, shot, request.imageCount())))
+                .toList());
+        context.setImageGroups(mergeShotImageGroups(context.getImageGroups(), generated));
+        if (request.imageScoringEnabledValue()) {
+            List<ShotImageGroup> scored = awaitAll(generated.stream()
+                    .map(group -> CompletableFuture.supplyAsync(() -> scoreImageGroup(group)))
+                    .toList());
+            context.setScoredImageGroups(mergeShotImageGroups(context.getScoredImageGroups(), scored));
+            context.setSelectedImages(mergeSelectedImagesAfterPartialImageRegen(context, shotIds, request, scored));
+        } else {
+            context.setScoredImageGroups(removeShotGroups(context.getScoredImageGroups(), targetIds));
+            context.setSelectedImages(mergeSelectedImagesAfterPartialImageRegen(context, shotIds, request, generated));
+        }
+    }
+
+    private void regenerateVideosForShots(
+            CreateVideoTaskRequest request,
+            VideoConfig config,
+            WorkflowContext context,
+            List<String> shotIds
+    ) {
+        Map<String, SelectedImage> selectedByShot = context.getSelectedImages().stream()
+                .collect(Collectors.toMap(SelectedImage::shotId, selected -> selected, (first, ignored) -> first));
+        List<SelectedImage> targets = new ArrayList<>();
+        for (String shotId : shotIds) {
+            SelectedImage selectedImage = selectedByShot.get(shotId);
+            if (selectedImage == null) {
+                throw new IllegalStateException("分镜 " + shotId + " 未选择输入图片，无法重生视频");
+            }
+            targets.add(selectedImage);
+        }
+        List<ShotVideoGroup> generated = awaitAll(targets.stream()
+                .map(selectedImage -> CompletableFuture.supplyAsync(() -> generateVideoGroup(request, config, selectedImage)))
+                .toList());
+        context.setVideoGroups(mergeShotVideoGroups(context.getVideoGroups(), generated));
+        if (request.videoScoringEnabledValue()) {
+            List<ShotVideoGroup> scored = awaitAll(generated.stream()
+                    .map(group -> CompletableFuture.supplyAsync(() -> scoreVideoGroup(group)))
+                    .toList());
+            context.setScoredVideoGroups(mergeShotVideoGroups(context.getScoredVideoGroups(), scored));
+            context.setSelectedVideos(mergeSelectedVideosAfterPartialVideoRegen(context, shotIds, request, scored));
+        } else {
+            context.setScoredVideoGroups(removeShotVideoGroups(context.getScoredVideoGroups(), new HashSet<>(shotIds)));
+            context.setSelectedVideos(mergeSelectedVideosAfterPartialVideoRegen(context, shotIds, request, generated));
+        }
+    }
+
+    private void validatePartialRegenerateShots(List<Shot> shots, List<String> shotIds) {
+        Set<String> existing = shots == null ? Set.of() : shots.stream().map(Shot::shotId).collect(Collectors.toSet());
+        for (String shotId : shotIds) {
+            if (!existing.contains(shotId)) {
+                throw new IllegalArgumentException("未知分镜 ID: " + shotId);
+            }
+        }
+    }
+
+    private void mergePartialSelectedImages(WorkflowContext context, List<SelectedImage> incoming, List<String> shotIds) {
+        Set<String> targetIds = new HashSet<>(shotIds);
+        List<SelectedImage> kept = context.getSelectedImages().stream()
+                .filter(selected -> !targetIds.contains(selected.shotId()))
+                .toList();
+        List<SelectedImage> updated = incoming.stream()
+                .filter(selected -> targetIds.contains(selected.shotId()))
+                .toList();
+        List<SelectedImage> merged = new ArrayList<>(kept);
+        merged.addAll(updated);
+        List<ShotImageGroup> sourceGroups = isEmpty(context.getScoredImageGroups())
+                ? context.getImageGroups()
+                : context.getScoredImageGroups();
+        context.setSelectedImages(orderSelectedImages(sourceGroups, merged));
+    }
+
+    private void clearShotsImageData(WorkflowContext context, List<String> shotIds) {
+        Set<String> targetIds = new HashSet<>(shotIds);
+        context.setImageGroups(removeShotGroups(context.getImageGroups(), targetIds));
+        context.setScoredImageGroups(removeShotGroups(context.getScoredImageGroups(), targetIds));
+        context.setSelectedImages(context.getSelectedImages().stream()
+                .filter(selected -> !targetIds.contains(selected.shotId()))
+                .toList());
+        clearShotsVideoData(context, shotIds);
+    }
+
+    private void clearShotsVideoData(WorkflowContext context, List<String> shotIds) {
+        Set<String> targetIds = new HashSet<>(shotIds);
+        context.setVideoGroups(removeShotVideoGroups(context.getVideoGroups(), targetIds));
+        context.setScoredVideoGroups(removeShotVideoGroups(context.getScoredVideoGroups(), targetIds));
+        context.setSelectedVideos(context.getSelectedVideos().stream()
+                .filter(selected -> !targetIds.contains(selected.shotId()))
+                .toList());
+    }
+
+    private List<ShotImageGroup> mergeShotImageGroups(List<ShotImageGroup> existing, List<ShotImageGroup> updates) {
+        if (isEmpty(updates)) {
+            return existing == null ? List.of() : existing;
+        }
+        Map<String, ShotImageGroup> updateMap = updates.stream()
+                .collect(Collectors.toMap(ShotImageGroup::shotId, group -> group, (first, ignored) -> first));
+        List<ShotImageGroup> merged = new ArrayList<>();
+        if (!isEmpty(existing)) {
+            for (ShotImageGroup group : existing) {
+                merged.add(updateMap.getOrDefault(group.shotId(), group));
+                updateMap.remove(group.shotId());
+            }
+        }
+        merged.addAll(updateMap.values());
+        merged.sort(Comparator.comparing(ShotImageGroup::shotId));
+        return merged;
+    }
+
+    private List<ShotVideoGroup> mergeShotVideoGroups(List<ShotVideoGroup> existing, List<ShotVideoGroup> updates) {
+        if (isEmpty(updates)) {
+            return existing == null ? List.of() : existing;
+        }
+        Map<String, ShotVideoGroup> updateMap = updates.stream()
+                .collect(Collectors.toMap(ShotVideoGroup::shotId, group -> group, (first, ignored) -> first));
+        List<ShotVideoGroup> merged = new ArrayList<>();
+        if (!isEmpty(existing)) {
+            for (ShotVideoGroup group : existing) {
+                merged.add(updateMap.getOrDefault(group.shotId(), group));
+                updateMap.remove(group.shotId());
+            }
+        }
+        merged.addAll(updateMap.values());
+        merged.sort(Comparator.comparing(ShotVideoGroup::shotId));
+        return merged;
+    }
+
+    private List<ShotImageGroup> removeShotGroups(List<ShotImageGroup> groups, Set<String> shotIds) {
+        if (isEmpty(groups)) {
+            return List.of();
+        }
+        return groups.stream()
+                .filter(group -> !shotIds.contains(group.shotId()))
+                .toList();
+    }
+
+    private List<ShotVideoGroup> removeShotVideoGroups(List<ShotVideoGroup> groups, Set<String> shotIds) {
+        if (isEmpty(groups)) {
+            return List.of();
+        }
+        return groups.stream()
+                .filter(group -> !shotIds.contains(group.shotId()))
+                .toList();
+    }
+
+    private List<SelectedImage> mergeSelectedImagesAfterPartialImageRegen(
+            WorkflowContext context,
+            List<String> shotIds,
+            CreateVideoTaskRequest request,
+            List<ShotImageGroup> freshGroups
+    ) {
+        Set<String> targetIds = new HashSet<>(shotIds);
+        List<SelectedImage> kept = context.getSelectedImages().stream()
+                .filter(selected -> !targetIds.contains(selected.shotId()))
+                .toList();
+        List<SelectedImage> freshSelections = freshGroups.stream()
+                .map(group -> request.imageScoringEnabledValue()
+                        ? pickBestImages(List.of(group)).get(0)
+                        : pickFirstImages(List.of(group)).get(0))
+                .toList();
+        List<SelectedImage> merged = new ArrayList<>(kept);
+        merged.addAll(freshSelections);
+        List<ShotImageGroup> sourceGroups = mergeShotImageGroups(
+                request.imageScoringEnabledValue() ? context.getScoredImageGroups() : context.getImageGroups(),
+                freshGroups
+        );
+        return orderSelectedImages(sourceGroups, merged);
+    }
+
+    private List<SelectedVideo> mergeSelectedVideosAfterPartialVideoRegen(
+            WorkflowContext context,
+            List<String> shotIds,
+            CreateVideoTaskRequest request,
+            List<ShotVideoGroup> freshGroups
+    ) {
+        Set<String> targetIds = new HashSet<>(shotIds);
+        List<SelectedVideo> kept = context.getSelectedVideos().stream()
+                .filter(selected -> !targetIds.contains(selected.shotId()))
+                .toList();
+        List<SelectedVideo> freshSelections = freshGroups.stream()
+                .map(group -> request.videoScoringEnabledValue()
+                        ? pickBestVideos(List.of(group)).get(0)
+                        : pickFirstVideos(List.of(group)).get(0))
+                .toList();
+        List<SelectedVideo> merged = new ArrayList<>(kept);
+        merged.addAll(freshSelections);
+        List<ShotVideoGroup> sourceGroups = mergeShotVideoGroups(
+                request.videoScoringEnabledValue() ? context.getScoredVideoGroups() : context.getVideoGroups(),
+                freshGroups
+        );
+        return orderSelectedVideos(sourceGroups, merged);
     }
 
     private void applyRegenerateInputs(String taskId, TaskStage fromStage, RegenerateVideoTaskRequest request) {
