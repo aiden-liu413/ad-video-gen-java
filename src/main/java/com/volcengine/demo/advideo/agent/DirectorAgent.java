@@ -22,6 +22,7 @@ public class DirectorAgent {
 
     private static final Pattern JSON_BLOCK = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```");
     private static final Pattern FIRST_NUMBER = Pattern.compile("\\d+");
+    private static final Pattern DURATION_TEXT = Pattern.compile("(\\d{1,3})\\s*(?:秒|s)", Pattern.CASE_INSENSITIVE);
 
     private final ArkChatClient chatClient;
     private final PromptService promptService;
@@ -186,12 +187,38 @@ public class DirectorAgent {
         return matcher.find() ? Integer.parseInt(matcher.group()) : fallback;
     }
 
+    /**
+     * 功能描述：解析分镜时长，优先读取结构化字段，并兼容模型把“时长4秒”写入脚本字段的情况。
+     * 参数解释：shot 表示单个分镜 JSON 节点。
+     * 返回对象描述：返回分镜时长秒数；无法解析时返回默认 5 秒。
+     * 可能抛出的异常：无。
+     */
     private int duration(JsonNode shot) {
         int seconds = shot.path("seconds").asInt(0);
         if (seconds <= 0) {
             seconds = shot.path("duration").asInt(0);
         }
+        if (seconds <= 0) {
+            seconds = textualDuration(shot);
+        }
         return seconds > 0 ? seconds : 5;
+    }
+
+    /**
+     * 功能描述：从画面、运镜或文案文本中提取中文脚本内嵌的时长表达。
+     * 参数解释：shot 表示单个分镜 JSON 节点。
+     * 返回对象描述：返回提取到的秒数；未提取到时返回 0。
+     * 可能抛出的异常：无。
+     */
+    private int textualDuration(JsonNode shot) {
+        return List.of("image", "action", "words").stream()
+                .map(field -> shot.path(field).asText(""))
+                .map(DURATION_TEXT::matcher)
+                .filter(Matcher::find)
+                .map(matcher -> Integer.parseInt(matcher.group(1)))
+                .filter(seconds -> seconds > 0)
+                .findFirst()
+                .orElse(0);
     }
 
     private record ParsedStoryboard(String title, List<Scene> scenes) {
