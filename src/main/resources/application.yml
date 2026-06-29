@@ -17,6 +17,10 @@ spring:
     console:
       enabled: true
       path: /h2-console
+  servlet:
+    multipart:
+      max-file-size: ${MULTIPART_MAX_FILE_SIZE:200MB}
+      max-request-size: ${MULTIPART_MAX_REQUEST_SIZE:220MB}
 
 ad-video:
   llm:

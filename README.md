@@ -180,6 +180,10 @@ export PUBLIC_BASE_URL=http://localhost:8080
 export FFMPEG_BINARY=ffmpeg
 export FFMPEG_OUTPUT_DIR=./data/final-videos
 
+# 上传大小限制（商品图 / 参考视频）
+export MULTIPART_MAX_FILE_SIZE=200MB
+export MULTIPART_MAX_REQUEST_SIZE=220MB
+
 # S3 兼容对象存储
 export S3_ENDPOINT=http://127.0.0.1:9000
 export S3_PUBLIC_BASE_URL=http://127.0.0.1:9000
@@ -198,6 +202,8 @@ export S3_OBJECT_EXPIRATION_DAYS=7
 | `LLM_ENDPOINT_ID` / `CGT_ENDPOINT_ID` / `T2V_ENDPOINT_ID` | 方舟接入点 ID；未填时回退为 `model` 字段 |
 | `PUBLIC_BASE_URL` | 短链与 mock 视频 URL 前缀；亦用于 Release 成片链接 |
 | `FFMPEG_OUTPUT_DIR` | 本地成片目录；通过 `/final-videos/**` 提供 HTTP 访问 |
+| `MULTIPART_MAX_FILE_SIZE` | 单个上传文件大小上限，默认 `200MB` |
+| `MULTIPART_MAX_REQUEST_SIZE` | 单次 multipart 请求大小上限，默认 `220MB` |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | 未配置时上传返回 `mock://local/...` URL |
 | `S3_OBJECT_EXPIRATION_DAYS` | `uploads/` 前缀对象过期天数；`final-videos/` 不过期 |
 
